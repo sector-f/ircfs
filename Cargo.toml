@@ -4,4 +4,3 @@ version = "0.1.0"
 authors = ["Adam <sector-f@users.noreply.github.com>"]
 
 [dependencies]
-fuse = "0.3.0"
