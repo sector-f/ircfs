@@ -20,4 +20,5 @@ pub struct ServerConfig {
     alias: Option<String>,
     ssl: Option<bool>,
     autoconnect: Option<bool>,
+    autojoin: Option<Vec<String>>,
 }
