@@ -5,6 +5,7 @@ username = "riiir-test"
 username = "riiir"
 address = "irc.rizon.net"
 alias = "rizon"
+autoconnect = true
 
 [[server]]
 address = "chat.freenode.net"

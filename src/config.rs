@@ -19,4 +19,5 @@ pub struct ServerConfig {
     port: Option<u16>,
     alias: Option<String>,
     ssl: Option<bool>,
+    autoconnect: Option<bool>,
 }

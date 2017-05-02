@@ -1,7 +1,5 @@
-use std::os::raw::c_int;
 use std::env::args_os;
 use std::path::{Path, PathBuf};
-use std::io;
 
 fn main() {
     // Replace this with clap later
