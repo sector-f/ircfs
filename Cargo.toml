@@ -4,3 +4,7 @@ version = "0.1.0"
 authors = ["Adam <sector-f@users.noreply.github.com>"]
 
 [dependencies]
+toml = "0.4.0"
+serde = "1.0.2"
+serde_derive = "1.0.2"
+irc = "0.11.6"

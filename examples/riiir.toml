@@ -1,0 +1,12 @@
+[global]
+username = "riiir-test"
+
+[[server]]
+username = "riiir"
+address = "irc.rizon.net"
+alias = "rizon"
+
+[[server]]
+address = "chat.freenode.net"
+port = 6697
+ssl = true
