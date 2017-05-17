@@ -5,45 +5,28 @@ extern crate clap;
 use clap::{App, Arg};
 
 extern crate fuse;
-use fuse::{Filesystem, Request};
+// use fuse::{Filesystem, Request, ReplyDirectory};
+use fuse::*;
 
 extern crate daemonize;
 use daemonize::Daemonize;
 
+extern crate libc;
+use libc::{ENOENT, ENOSYS};
+
+extern crate time;
+use time::Timespec;
+
+use std::mem;
 use std::os::raw::c_int;
 use std::env::current_dir;
 use std::process::exit;
 use std::path::{Path, PathBuf};
-use std::thread::spawn;
+use std::thread;
+use std::sync::mpsc::{channel, Sender, Receiver};
 
-struct IrcFs;
-
-impl Filesystem for IrcFs {
-    fn init(&mut self, _req: &Request) -> Result<(), c_int> {
-        let config = Config {
-            nickname: Some("riiir-nickname".to_string()),
-            username: Some("riiir-username".to_string()),
-            realname: Some("riiir-realname".to_string()),
-            server: Some("irc.rizon.net".to_string()),
-            channels: Some(vec![
-                "#cosarara".to_string(),
-                "#riiir".to_string(),
-            ]),
-            .. Default::default()
-        };
-
-        match IrcServer::from_config(config) {
-            Ok(server) => {
-                server.identify();
-                return Ok(());
-            },
-            Err(e) => {
-                println!("Error: {}", e);
-                return Err(1);
-            },
-        };
-    }
-}
+pub mod ircfs;
+use ircfs::*;
 
 fn main() {
     let matches = App::new("riiir")
@@ -80,11 +63,11 @@ fn main() {
     if matches.is_present("daemonize") {
         let daemon = Daemonize::new()
             .privileged_action(move || {
-                fuse::mount(IrcFs, &mountpoint, &[]);
+                fuse::mount(IrcFs::new(), &mountpoint, &[]);
             });
 
         let _ = daemon.start();
     } else {
-        fuse::mount(IrcFs, &mountpoint, &[]);
+        fuse::mount(IrcFs::new(), &mountpoint, &[]);
     }
 }
