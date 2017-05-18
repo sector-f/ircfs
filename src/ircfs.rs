@@ -15,43 +15,60 @@ use std::collections::HashMap;
 use std::os::raw::c_int;
 
 pub struct IrcFs {
-    inode_map: HashMap<u64, Vec<u64>>, // Maps dir inodes to file inodes
-    directories: HashMap<u64, FuseDir>,
+    files: HashMap<u64, FuseServer>,
     highest_inode: u64,
     init_time: Timespec,
 }
 
-pub struct FuseDir {
+pub struct FuseServer {
+    // ino: u64,
     name: OsString,
+    files: Vec<FuseFile>,
+}
+
+pub enum FuseFile {
+    InFile(u64),
+    OutFile(u64),
+}
+
+impl FuseFile {
+    pub fn ino(&self) -> u64 {
+        match *self {
+            FuseFile::InFile(ino) => ino,
+            FuseFile::OutFile(ino) => ino,
+        }
+    }
 }
 
 impl IrcFs {
     pub fn new() -> Self {
         IrcFs {
-            inode_map: HashMap::new(),
-            directories: HashMap::new(),
+            files: HashMap::new(),
             highest_inode: 1,
             init_time: time::now().to_timespec(),
         }
     }
 
-    pub fn insert_dir(&mut self, dir: FuseDir) {
+    pub fn add_server(&mut self, name: OsString) {
         let ino = self.highest_inode;
-        self.directories.insert(ino+1, dir);
-        self.inode_map.insert(ino+1, vec![ino+2, ino+3]);
+        let server = FuseServer {
+            name: name,
+            files: vec![FuseFile::InFile(ino+2), FuseFile::OutFile(ino+3)],
+        };
+        self.files.insert(ino+1, server);
         self.highest_inode += 3;
     }
 }
 
 impl Filesystem for IrcFs {
     fn init(&mut self, _req: &Request) -> Result<(), c_int> {
-        let foo = FuseDir { name: OsString::from("foo") };
-        let bar = FuseDir { name: OsString::from("bar") };
-        let baz = FuseDir { name: OsString::from("baz") };
+        let foo = OsString::from("foo");
+        let bar = OsString::from("bar");
+        let baz = OsString::from("baz");
 
-        self.insert_dir(foo);
-        self.insert_dir(bar);
-        self.insert_dir(baz);
+        self.add_server(foo);
+        self.add_server(bar);
+        self.add_server(baz);
 
         // let config = Config {
         //     nickname: Some("riiir-nickname".to_string()),
@@ -106,9 +123,9 @@ impl Filesystem for IrcFs {
             reply.attr(&ttl, &attr);
             return;
         } else {
-            for (inode, dir) in &self.inode_map {
-                let infile = &dir[0];
-                let outfile = &dir[1];
+            for (inode, server) in &self.files {
+                let infile = &server.files[0].ino();
+                let outfile = &server.files[1].ino();
 
                 if &ino == inode {
                     let attr = FileAttr {
@@ -178,10 +195,10 @@ impl Filesystem for IrcFs {
         println!("lookup(parent={}, name={})", parent, name.to_string_lossy());
         let ttl = Timespec::new(1, 0);
         if parent == 1 {
-            for (ino, dir) in &self.directories {
-                if name == dir.name {
+            for (inode, server) in &self.files {
+                if name == server.name {
                     let attr = FileAttr {
-                        ino: ino.clone(),
+                        ino: inode.clone(),
                         size: 4096,
                         blocks: 8,
                         atime: self.init_time,
@@ -202,23 +219,25 @@ impl Filesystem for IrcFs {
                 }
             }
         } else {
-            for (ino, dir) in &self.directories {
-                let inode = {
+            for (inode, server) in &self.files {
+                let in_inode = &self.files[inode].files[0].ino();
+                let out_inode = &self.files[inode].files[1].ino();
+
+                let reply_inode = {
                     if name == "in" {
-                        &self.inode_map[ino][0]
+                        in_inode.clone()
                     } else if name == "out" {
-                        &self.inode_map[ino][1]
+                        out_inode.clone()
                     } else {
                         reply.error(ENOENT);
                         return;
                     }
                 };
 
-
-                if &parent == ino {
+                if &parent == inode {
                     if name == "in" || name == "out" {
                         let attr = FileAttr {
-                            ino: inode.clone(),
+                            ino: reply_inode.clone(),
                             size: 0,
                             blocks: 0,
                             atime: self.init_time,
@@ -248,18 +267,18 @@ impl Filesystem for IrcFs {
             if ino == 1 {
                 reply.add(1, 0, FileType::Directory, ".");
                 reply.add(1, 1, FileType::Directory, "..");
-                for (ino, dir) in &self.directories {
-                    reply.add(ino.clone(), ino.clone(), FileType::Directory, &dir.name);
+                for (inode, server) in &self.files {
+                    reply.add(inode.clone(), inode.clone(), FileType::Directory, &server.name);
                 }
                 reply.ok();
                 return;
             } else {
-                match self.inode_map.get(&ino) {
-                    Some(dir) => {
+                match self.files.get(&ino) {
+                    Some(server) => {
                         reply.add(1, 0, FileType::Directory, ".");
                         reply.add(1, 1, FileType::Directory, "..");
-                        reply.add(dir[0], dir[0], FileType::RegularFile, "in");
-                        reply.add(dir[1], dir[1], FileType::RegularFile, "out");
+                        reply.add(server.files[0].ino(), server.files[0].ino(), FileType::RegularFile, "in");
+                        reply.add(server.files[1].ino(), server.files[1].ino(), FileType::RegularFile, "out");
                         reply.ok();
                     },
                     None => {
