@@ -22,16 +22,17 @@ pub struct IrcFs {
     highest_inode: u64,
 }
 
-pub struct IrcDir {
+struct IrcDir {
     name: OsString,
     // server: IrcServer,
     attr: FileAttr,
     infile: IrcFile,
     outfile: IrcFile,
+    buf: Vec<u8>,
 }
 
 impl IrcDir {
-    pub fn new(name: OsString, ino: u64) -> Self {
+    fn new(name: OsString, ino: u64, infile: IrcFile, outfile: IrcFile) -> Self {
         let init_time = time::get_time();
 
         let attr = FileAttr {
@@ -54,8 +55,9 @@ impl IrcDir {
         IrcDir {
             name: name,
             attr: attr,
-            infile: IrcFile::new(ino+1),
-            outfile: IrcFile::new(ino+2),
+            infile: infile,
+            outfile: outfile,
+            buf: Vec::new(),
         }
     }
 }
@@ -120,7 +122,9 @@ impl IrcFs {
 
     pub fn add_server(&mut self, name: OsString) {
         let ino = self.highest_inode;
-        let dir = IrcDir::new(name, ino+1);
+        let infile = IrcFile::new(ino+2);
+        let outfile = IrcFile::new(ino+3);
+        let dir = IrcDir::new(name, ino+1, infile, outfile);
         self.files.insert(ino+1, dir);
         self.dir_map.insert(ino+2, ino+1);
         self.dir_map.insert(ino+3, ino+1);
@@ -169,20 +173,21 @@ impl Filesystem for IrcFs {
     }
 
     fn getattr(&mut self, _req: &Request, req_ino: u64, reply: ReplyAttr) {
+        println!("getattr(ino={})", req_ino);
         let ttl = Timespec::new(1, 0);
         if req_ino == 1 {
             reply.attr(&ttl, &self.attr);
             return;
         } else {
-            for dir_ino in self.files.keys() {
+            for (dir_ino, dir) in &self.files {
                 if &req_ino == dir_ino {
-                    reply.attr(&ttl, &self.files[&req_ino].attr);
+                    reply.attr(&ttl, &dir.attr);
                     return;
-                } else if &req_ino == &self.files[&req_ino].infile.attr.ino {
-                    reply.attr(&ttl, &self.files[&req_ino].infile.attr);
+                } else if req_ino == dir.infile.attr.ino {
+                    reply.attr(&ttl, &dir.infile.attr);
                     return;
-                } else if &req_ino == &self.files[&req_ino].outfile.attr.ino {
-                    reply.attr(&ttl, &self.files[&req_ino].outfile.attr);
+                } else if req_ino == dir.outfile.attr.ino {
+                    reply.attr(&ttl, &dir.outfile.attr);
                     return;
                 }
             }
@@ -258,5 +263,21 @@ impl Filesystem for IrcFs {
             }
         }
         reply.error(ENOENT);
+    }
+
+    fn read(&mut self,
+        _req: &Request,
+        req_ino: u64,
+        fh: u64,
+        offset: u64,
+        size: u32,
+        reply: ReplyData) {
+        println!("read(ino={}, fh={}, offset={}, size={})", req_ino, fh, offset, size);
+
+        if let Some(_dir) = self.dir_map.get(&req_ino) {
+            reply.data(&"Hello, world!".as_bytes()[offset as usize..]);
+        } else {
+            reply.error(ENOENT);
+        }
     }
 }
