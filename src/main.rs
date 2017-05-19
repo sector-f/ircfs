@@ -1,29 +1,18 @@
+extern crate time;
+extern crate fuse;
 extern crate irc;
-use irc::client::prelude::*;
+extern crate libc;
 
 extern crate clap;
 use clap::{App, Arg};
 
-extern crate fuse;
-// use fuse::{Filesystem, Request, ReplyDirectory};
-use fuse::*;
-
 extern crate daemonize;
 use daemonize::Daemonize;
 
-extern crate libc;
-use libc::{ENOENT, ENOSYS};
 
-extern crate time;
-use time::Timespec;
-
-use std::mem;
-use std::os::raw::c_int;
 use std::env::current_dir;
 use std::process::exit;
-use std::path::{Path, PathBuf};
-use std::thread;
-use std::sync::mpsc::{channel, Sender, Receiver};
+use std::path::PathBuf;
 
 pub mod ircfs;
 use ircfs::*;
@@ -63,11 +52,11 @@ fn main() {
     if matches.is_present("daemonize") {
         let daemon = Daemonize::new()
             .privileged_action(move || {
-                fuse::mount(IrcFs::new(), &mountpoint, &[]);
+                let _ = fuse::mount(IrcFs::new(), &mountpoint, &[]);
             });
 
         let _ = daemon.start();
     } else {
-        fuse::mount(IrcFs::new(), &mountpoint, &[]);
+        let _ = fuse::mount(IrcFs::new(), &mountpoint, &[]);
     }
 }

@@ -11,9 +11,7 @@ use irc::client::prelude::*;
 extern crate time;
 use time::Timespec;
 
-use std::path::{Path, PathBuf};
 use std::ffi::{OsStr, OsString};
-use std::mem;
 use std::collections::HashMap;
 use std::os::raw::c_int;
 
@@ -22,7 +20,6 @@ pub struct IrcFs {
     dir_map: HashMap<u64, u64>, // Maps in/out inodes to dir inodes
     attr: FileAttr, // Attributes for filesystem root dir
     highest_inode: u64,
-    init_time: Timespec,
 }
 
 pub struct IrcDir {
@@ -34,7 +31,7 @@ pub struct IrcDir {
 }
 
 impl IrcDir {
-    pub fn new(name: OsString, ino: u64,) -> Self {
+    pub fn new(name: OsString, ino: u64) -> Self {
         let init_time = time::get_time();
 
         let attr = FileAttr {
@@ -118,7 +115,6 @@ impl IrcFs {
             dir_map: HashMap::new(),
             attr: attr,
             highest_inode: 1,
-            init_time: time::now().to_timespec(),
         }
     }
 
@@ -178,7 +174,7 @@ impl Filesystem for IrcFs {
             reply.attr(&ttl, &self.attr);
             return;
         } else {
-            for (dir_ino, dir) in &self.files {
+            for dir_ino in self.files.keys() {
                 if &req_ino == dir_ino {
                     reply.attr(&ttl, &self.files[&req_ino].attr);
                     return;
@@ -223,7 +219,7 @@ impl Filesystem for IrcFs {
         reply.error(ENOENT);
     }
 
-    fn readdir(&mut self, _req:&Request, ino:u64, fh:u64, offset:u64, mut reply:ReplyDirectory) {
+    fn readdir(&mut self, _req:&Request, ino:u64, _fh:u64, offset:u64, mut reply:ReplyDirectory) {
         if offset == 0 {
             if ino == 1 {
                 reply.add(1, 0, FileType::Directory, ".");
