@@ -1,5 +1,5 @@
 extern crate libc;
-use libc::{ENOENT, ENOSYS};
+use libc::{ENOENT, ENOSYS, EISDIR, ENOTSUP, EIO};
 
 extern crate fuse;
 // use fuse::{Filesystem, Request, ReplyDirectory};
@@ -38,14 +38,14 @@ struct RootDir {
 struct IrcDir {
     name: OsString,
     // server: IrcServer,
-    parent: u64,
+    // parent: u64,
     attr: FileAttr,
     in_inode: u64,
     out_inode: u64,
 }
 
 pub struct IrcFile {
-    parent: u64,
+    // parent: u64,
     attr: FileAttr,
     buf: Vec<u8>,
 }
@@ -73,7 +73,7 @@ impl IrcDir {
 
         IrcDir {
             name: name,
-            parent: 1, // Hard-code this (for now?)
+            // parent: 1, // Hard-code this (for now?)
             attr: attr,
             in_inode: in_inode,
             out_inode: out_inode,
@@ -103,7 +103,7 @@ impl IrcFile {
         };
 
         IrcFile {
-            parent: parent,
+            // parent: parent,
             attr: attr,
             buf: Vec::new(),
         }
@@ -313,6 +313,44 @@ impl Filesystem for IrcFs {
         reply.error(ENOENT);
     }
 
+    // fn setattr(&mut self,
+    //    _req: &Request,
+    //    ino: u64,
+    //    _mode: Option<u32>,
+    //    _uid: Option<u32>,
+    //    _gid: Option<u32>,
+    //    size: Option<u64>,
+    //    _atime: Option<Timespec>,
+    //    _mtime: Option<Timespec>,
+    //    _fh: Option<u64>,
+    //    _crtime: Option<Timespec>,
+    //    _chgtime: Option<Timespec>,
+    //    _bkuptime: Option<Timespec>,
+    //    _flags: Option<u32>,
+    //    reply: ReplyAttr) {
+    //     match self.types.get(&ino) {
+    //         Some(&FuseFiletype::Dir) => {
+    //         },
+    //         Some(&FuseFiletype::InFile) => {
+    //             if size == Some(0) {
+    //                 let ttl = Timespec::new(1, 0);
+    //                 reply.attr(&ttl, &self.files[&ino].attr);
+    //                 return;
+    //             }
+    //         },
+    //         Some(&FuseFiletype::OutFile) => {
+    //         },
+    //         None => {
+    //         },
+    //     }
+    //     reply.error(ENOTSUP);
+    // }
+
+    fn open(&mut self, _req: &Request, ino: u64, flags: u32, reply: ReplyOpen) {
+        println!("opened(ino={}, flags={})", ino, flags);
+        reply.opened(0, flags);
+    }
+
     fn read(&mut self,
         _req: &Request,
         req_ino: u64,
@@ -325,6 +363,37 @@ impl Filesystem for IrcFs {
             reply.data(&file.buf[offset as usize..]);
         } else {
             reply.error(ENOENT);
+        }
+    }
+
+    fn write(&mut self,
+         _req: &Request,
+         ino: u64,
+         _fh: u64,
+         offset: u64,
+         data: &[u8],
+         _flags: u32,
+         reply: ReplyWrite) {
+        println!("write(ino={}, offset={})", ino, offset);
+
+        match self.types.get(&ino) {
+            Some(&FuseFiletype::Dir) => {
+                reply.error(EISDIR);
+            },
+            Some(&FuseFiletype::InFile) => {
+                if let Some(ref mut file) = self.files.get_mut(&ino) {
+                    file.insert_data(&data);
+                    reply.written(data.len() as u32);
+                } else {
+                    reply.error(EIO); // This should never happen, I think
+                }
+            },
+            Some(&FuseFiletype::OutFile) => {
+                reply.error(ENOTSUP);
+            },
+            None => {
+                reply.error(ENOENT);
+            },
         }
     }
 }
