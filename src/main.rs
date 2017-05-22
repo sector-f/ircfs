@@ -1,5 +1,5 @@
 extern crate time;
-extern crate fuse;
+extern crate fuse_mt;
 extern crate irc;
 extern crate libc;
 
@@ -34,14 +34,13 @@ fn main() {
              .long("daemonize"))
         .get_matches();
 
-    // Replace this with clap later
     let mut mountpoint = PathBuf::from(matches.value_of_os("mountpoint").unwrap());
 
     if mountpoint.is_relative() {
         let mut current_directory = match current_dir() {
             Ok(dir) => dir,
-            Err(e) => {
-                println!("Could not determine current directory: {}", e);
+            Err(_) => {
+                println!("Failed to determine current directory to form absolute path to mountpoint; try again with an absolute path");
                 exit(1);
             },
         };
@@ -49,14 +48,17 @@ fn main() {
         mountpoint = current_directory;
     }
 
+    let uid = unsafe { libc::getuid() };
+    let gid = unsafe { libc::getgid() };
+
     if matches.is_present("daemonize") {
         let daemon = Daemonize::new()
             .privileged_action(move || {
-                let _ = fuse::mount(IrcFs::new(), &mountpoint, &[]);
+                let _ = fuse_mt::mount(fuse_mt::FuseMT::new(IrcFs::new(uid, gid)), &mountpoint, &[]);
             });
 
         let _ = daemon.start();
     } else {
-        let _ = fuse::mount(IrcFs::new(), &mountpoint, &[]);
+        let _ = fuse_mt::mount(fuse_mt::FuseMT::new(IrcFs::new(uid, gid)), &mountpoint, &[]);
     }
 }

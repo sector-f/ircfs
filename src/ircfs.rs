@@ -1,57 +1,41 @@
 extern crate libc;
-use libc::{ENOENT, ENOSYS, EISDIR, ENOTSUP, EIO};
+use libc::{ENOENT, ENOTSUP};
 
-extern crate fuse;
-// use fuse::{Filesystem, Request, ReplyDirectory};
-use fuse::*;
+extern crate fuse_mt;
+use fuse_mt::*;
 
-extern crate irc;
-use irc::client::prelude::*;
+// extern crate irc;
+// use irc::client::prelude::*;
 
 extern crate time;
 use time::Timespec;
 
 use std::ffi::{OsStr, OsString};
+use std::path::Path;
 use std::collections::HashMap;
-use std::os::raw::c_int;
 
 pub struct IrcFs {
-    dirs: HashMap<u64, IrcDir>, // Maps inodes to directories
-    files: HashMap<u64, IrcFile>, // Maps inodes to in/out files (including fs root's)
-    types: HashMap<u64, FuseFiletype>,
-    root: RootDir,
+    dirs: HashMap<OsString, IrcDir>,
+    attr: FileAttr,
+    in_file: IrcFile,
+    out_file: IrcFile,
     highest_inode: u64,
 }
 
-enum FuseFiletype {
-    Dir,
-    InFile,
-    OutFile,
-}
-
-struct RootDir {
-    attr: FileAttr,
-    in_inode: u64,
-    out_inode: u64,
-}
-
 struct IrcDir {
-    name: OsString,
     // server: IrcServer,
-    // parent: u64,
     attr: FileAttr,
-    in_inode: u64,
-    out_inode: u64,
+    in_file: IrcFile,
+    out_file: IrcFile,
 }
 
 pub struct IrcFile {
-    // parent: u64,
     attr: FileAttr,
     buf: Vec<u8>,
 }
 
 impl IrcDir {
-    fn new(name: OsString, ino: u64, in_inode: u64, out_inode: u64) -> Self {
+    fn new(ino: u64, in_inode: u64, out_inode: u64) -> Self {
         let init_time = time::get_time();
 
         let attr = FileAttr {
@@ -72,17 +56,15 @@ impl IrcDir {
         };
 
         IrcDir {
-            name: name,
-            // parent: 1, // Hard-code this (for now?)
             attr: attr,
-            in_inode: in_inode,
-            out_inode: out_inode,
+            in_file: IrcFile::new(in_inode),
+            out_file: IrcFile::new(out_inode),
         }
     }
 }
 
 impl IrcFile {
-    fn new(ino: u64, parent: u64) -> Self {
+    fn new(ino: u64) -> Self {
         let init_time = time::get_time();
 
         let attr = FileAttr {
@@ -103,7 +85,6 @@ impl IrcFile {
         };
 
         IrcFile {
-            // parent: parent,
             attr: attr,
             buf: Vec::new(),
         }
@@ -116,7 +97,7 @@ impl IrcFile {
 }
 
 impl IrcFs {
-    pub fn new() -> Self {
+    pub fn new(uid: u32, gid: u32) -> Self {
         let init_time = time::get_time();
 
         let attr = FileAttr {
@@ -130,80 +111,81 @@ impl IrcFs {
             kind: FileType::Directory,
             perm: 0o755,
             nlink: 2, // Number of hard links?
-            uid: 0,
-            gid: 0,
+            uid: uid,
+            gid: gid,
             rdev: 0,
             flags: 0,
         };
 
-        let mut files = HashMap::new();
-        let infile = IrcFile::new(2, 1);
-        let outfile = IrcFile::new(3, 1);
-
-        files.insert(2, infile);
-        files.insert(3, outfile);
-
-        let mut types = HashMap::new();
-        types.insert(2, FuseFiletype::InFile);
-        types.insert(3, FuseFiletype::OutFile);
-
         IrcFs {
             dirs: HashMap::new(),
-            files: files,
-            types: types,
-            root: RootDir { attr: attr, in_inode: 2, out_inode: 3 },
+            attr: attr,
+            in_file: IrcFile::new(2),
+            out_file: IrcFile::new(3),
             highest_inode: 3,
         }
     }
 
     // pub fn add_server(&mut self, name: Option<OsString>, server: IrcServer) {
-    pub fn add_server(&mut self, name: OsString) {
+    pub fn add_server(&mut self, alias: OsString) {
         let dir_ino = self.highest_inode + 1;
         let in_ino = dir_ino + 1;
         let out_ino = dir_ino + 2;
 
-        let infile = IrcFile::new(in_ino, dir_ino);
-        let mut outfile = IrcFile::new(out_ino, dir_ino);
-        outfile.insert_data("Test data\n".as_bytes());
-        let dir = IrcDir::new(name, dir_ino, in_ino, out_ino);
-
-        self.dirs.insert(dir_ino, dir);
-        self.types.insert(dir_ino, FuseFiletype::Dir);
-
-        self.files.insert(in_ino, infile);
-        self.types.insert(in_ino, FuseFiletype::InFile);
-
-        self.files.insert(out_ino, outfile);
-        self.types.insert(out_ino, FuseFiletype::OutFile);
-
+        self.dirs.insert(alias, IrcDir::new(dir_ino, in_ino, out_ino));
         self.highest_inode += 3;
-        self.root.attr.nlink += 1;
+        self.attr.nlink += 1;
     }
 
-    pub fn attr(&self, ino: u64) -> Option<FileAttr> {
-        if ino == 1 {
-            Some(self.root.attr)
-        } else {
-            match self.types.get(&ino) {
-                Some(&FuseFiletype::Dir) => {
-                    Some(self.dirs[&ino].attr)
-                },
-                Some(&FuseFiletype::InFile) => {
-                    Some(self.files[&ino].attr)
-                },
-                Some(&FuseFiletype::OutFile) => {
-                    Some(self.files[&ino].attr)
-                },
-                None => {
-                    None
-                },
+    // pub fn entry(&self, path: &Path) -> Option<(OsString, FileType)> {
+    //     if path == Path::new("/") {
+    //         return Some(OsString::from("/"), FileType::Directory);
+    //     } else if path == Path::new("/in") {
+    //         return Some(OsString::from("in"), FileType::RegularFile);
+    //     } else if path == Path::new("/out") {
+    //         return Some(OsString::from("out"), FileType::RegularFile);
+    //     }
+
+    //     if let Some(parent) = path.parent() {
+    //         if let Some(dir) = self.dirs.get(OsStr::new(parent)) {
+    //             if path.file_name() == Some(OsStr::new("in")) {
+    //                 return Some(OsString::from("in"), FileType::RegularFile);
+    //             } else if path.file_name() == Some(OsStr::new("out")) {
+    //                 return Some(OsString::from("out"), FileType::RegularFile);
+    //             } else {
+    //                 return Some(OsString::from(OsStr::new(parent)), FileType::Directory);
+    //             }
+    //         }
+    //     }
+
+    //     None
+    // }
+
+    pub fn attr(&self, path: &Path) -> Option<FileAttr> {
+        if path == Path::new("/") {
+            Some(self.attr)
+        } else if path == Path::new("/in") {
+            Some(self.in_file.attr)
+        } else if path == Path::new("/out") {
+            Some(self.out_file.attr)
+        } else if let Some(dir) = self.dirs.get(path.iter().nth(1).unwrap()) {
+            if path.file_name() == Some(OsStr::new("in")) {
+                Some(dir.in_file.attr)
+            } else if path.file_name() == Some(OsStr::new("out")) {
+                Some(dir.out_file.attr)
+            } else if path.iter().count() == 2 {
+                Some(dir.attr)
+            } else {
+                None
             }
+        } else {
+            None
         }
     }
 }
 
-impl Filesystem for IrcFs {
-    fn init(&mut self, req: &Request) -> Result<(), c_int> {
+impl FilesystemMT for IrcFs {
+    fn init(&mut self, _req: RequestInfo) -> ResultEmpty {
         let foo = OsString::from("foo");
         let bar = OsString::from("bar");
         let baz = OsString::from("baz");
@@ -212,8 +194,21 @@ impl Filesystem for IrcFs {
         self.add_server(bar);
         self.add_server(baz);
 
-        self.root.attr.uid = req.uid();
-        self.root.attr.gid = req.gid();
+        self.out_file.insert_data("Hello, world\n".as_bytes());
+
+        self.in_file.attr.uid = self.attr.uid;
+        self.in_file.attr.gid = self.attr.gid;
+        self.out_file.attr.uid = self.attr.uid;
+        self.out_file.attr.gid = self.attr.gid;
+
+        for dir in self.dirs.values_mut() {
+            dir.attr.uid = self.attr.uid;
+            dir.attr.gid = self.attr.gid;
+            dir.in_file.attr.uid = self.attr.uid;
+            dir.in_file.attr.gid = self.attr.gid;
+            dir.out_file.attr.uid = self.attr.uid;
+            dir.out_file.attr.gid = self.attr.gid;
+        }
 
         // let config = Config {
         //     nickname: Some("riiir-nickname".to_string()),
@@ -244,156 +239,155 @@ impl Filesystem for IrcFs {
         Ok(())
     }
 
-    fn getattr(&mut self, _req: &Request, req_ino: u64, reply: ReplyAttr) {
-        if let Some(attr) = self.attr(req_ino) {
-            let ttl = Timespec::new(1, 0);
-            reply.attr(&ttl, &attr);
-            return;
-        }
-        reply.error(ENOENT);
-    }
-
-    fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
-        let ttl = Timespec::new(1, 0);
-        if parent == 1 {
-            if name == "in" {
-                reply.entry(&ttl, &self.files[&self.root.in_inode].attr, 0);
-                return;
-            } else if name == "out" {
-                reply.entry(&ttl, &self.files[&self.root.out_inode].attr, 0);
-                return;
-            } else {
-                for (inode, dir) in &self.dirs {
-                    if name == dir.name {
-                        reply.entry(&ttl, &dir.attr, 0);
-                        return;
-                    }
-                }
-            }
+    fn getattr(&mut self, _req: RequestInfo, path: &Path, _fh: Option<u64>) -> ResultGetattr {
+        if let Some(attr) = self.attr(&path) {
+            Ok((Timespec::new(1, 0), attr))
         } else {
-            if let Some(dir) = self.dirs.get(&parent) {
-                if name == "in" {
-                    reply.entry(&ttl, &self.files[&dir.in_inode].attr, 0);
-                    return;
-                } else if name == "out" {
-                    reply.entry(&ttl, &self.files[&dir.out_inode].attr, 0);
-                    return;
-                }
-            }
+            Err(ENOENT)
         }
-        reply.error(ENOENT);
     }
 
-    fn readdir(&mut self, _req:&Request, ino:u64, _fh:u64, offset:u64, mut reply:ReplyDirectory) {
-        if offset == 0 {
-            if ino == 1 {
-                reply.add(1, 0, FileType::Directory, ".");
-                reply.add(1, 1, FileType::Directory, "..");
-                reply.add(2, 2, FileType::RegularFile, "in");
-                reply.add(3, 3, FileType::RegularFile, "out");
-
-                for (inode, dir) in &self.dirs {
-                    let inode = inode.clone();
-                    reply.add(inode, inode, FileType::Directory, &dir.name);
-                }
-
-                reply.ok();
-                return;
-            } else {
-                if let Some(dir) = self.dirs.get(&ino) {
-                    // reply.add(1, 0, FileType::Directory, ".");
-                    // reply.add(1, 1, FileType::Directory, "..");
-                    reply.add(dir.in_inode, dir.in_inode, FileType::RegularFile, "in");
-                    reply.add(dir.out_inode, dir.out_inode, FileType::RegularFile, "out");
-                    reply.ok();
-                    return;
-                }
-            }
+    fn lookup(&mut self, _req: RequestInfo, parent: &Path, name: &OsStr) -> ResultEntry {
+        if let Some(attr) = self.attr(&parent.join(name)) {
+            Ok((Timespec::new(1, 0), attr))
+        } else {
+            Err(ENOENT)
         }
-        reply.error(ENOENT);
     }
 
-    // fn setattr(&mut self,
-    //    _req: &Request,
-    //    ino: u64,
-    //    _mode: Option<u32>,
-    //    _uid: Option<u32>,
-    //    _gid: Option<u32>,
-    //    size: Option<u64>,
-    //    _atime: Option<Timespec>,
-    //    _mtime: Option<Timespec>,
-    //    _fh: Option<u64>,
-    //    _crtime: Option<Timespec>,
-    //    _chgtime: Option<Timespec>,
-    //    _bkuptime: Option<Timespec>,
-    //    _flags: Option<u32>,
-    //    reply: ReplyAttr) {
-    //     match self.types.get(&ino) {
-    //         Some(&FuseFiletype::Dir) => {
-    //         },
-    //         Some(&FuseFiletype::InFile) => {
-    //             if size == Some(0) {
-    //                 let ttl = Timespec::new(1, 0);
-    //                 reply.attr(&ttl, &self.files[&ino].attr);
-    //                 return;
-    //             }
-    //         },
-    //         Some(&FuseFiletype::OutFile) => {
-    //         },
-    //         None => {
-    //         },
-    //     }
-    //     reply.error(ENOTSUP);
+    fn opendir(&mut self, _req: RequestInfo, path: &Path, _flags: u32) -> ResultOpen {
+        if let Some(_attr) = self.attr(&path) {
+            Ok((0, 0))
+        } else {
+            Err(ENOENT)
+        }
+    }
+
+    fn readdir(&mut self, _req: RequestInfo, path: &Path, _fh: u64) -> ResultReaddir {
+        if path == Path::new("/") {
+            let mut entries = Vec::new();
+            for (name, _dir) in &self.dirs {
+                entries.push(DirectoryEntry { name: name.to_owned(), kind: FileType::Directory });
+            }
+            entries.push(DirectoryEntry {name:OsString::from("."),kind:FileType::Directory});
+            entries.push(DirectoryEntry {name:OsString::from(".."),kind:FileType::Directory});
+            entries.push(DirectoryEntry {name:OsString::from("in"),kind:FileType::RegularFile});
+            entries.push(DirectoryEntry {name:OsString::from("out"),kind:FileType::RegularFile});
+            Ok(entries)
+        } else if let Some(name) = path.iter().nth(1) {
+            let mut entries = Vec::new();
+            if let Some(_dir) = self.dirs.get(name) {
+                entries.push(DirectoryEntry {name:OsString::from("."),kind:FileType::Directory});
+                entries.push(DirectoryEntry {name:OsString::from(".."),kind:FileType::Directory});
+                entries.push(DirectoryEntry {name:OsString::from("in"),kind:FileType::RegularFile});
+                entries.push(DirectoryEntry {name:OsString::from("out"),kind:FileType::RegularFile});
+            }
+            Ok(entries)
+        } else {
+            Err(ENOENT)
+        }
+    }
+
+    // // fn setattr(&mut self,
+    // //    _req: &Request,
+    // //    ino: u64,
+    // //    _mode: Option<u32>,
+    // //    _uid: Option<u32>,
+    // //    _gid: Option<u32>,
+    // //    size: Option<u64>,
+    // //    _atime: Option<Timespec>,
+    // //    _mtime: Option<Timespec>,
+    // //    _fh: Option<u64>,
+    // //    _crtime: Option<Timespec>,
+    // //    _chgtime: Option<Timespec>,
+    // //    _bkuptime: Option<Timespec>,
+    // //    _flags: Option<u32>,
+    // //    reply: ReplyAttr) {
+    // //     match self.types.get(&ino) {
+    // //         Some(&FuseFiletype::Dir) => {
+    // //         },
+    // //         Some(&FuseFiletype::InFile) => {
+    // //             if size == Some(0) {
+    // //                 let ttl = Timespec::new(1, 0);
+    // //                 reply.attr(&ttl, &self.files[&ino].attr);
+    // //                 return;
+    // //             }
+    // //         },
+    // //         Some(&FuseFiletype::OutFile) => {
+    // //         },
+    // //         None => {
+    // //         },
+    // //     }
+    // //     reply.error(ENOTSUP);
+    // // }
+
+    // fn open(&mut self, _req: &Request, ino: u64, flags: u32, reply: ReplyOpen) {
+    //     println!("opened(ino={}, flags={})", ino, flags);
+    //     reply.opened(0, flags);
     // }
 
-    fn open(&mut self, _req: &Request, ino: u64, flags: u32, reply: ReplyOpen) {
-        println!("opened(ino={}, flags={})", ino, flags);
-        reply.opened(0, flags);
+    fn read(&mut self,_req:RequestInfo,path:&Path,_fh:u64,offset:u64,_size:u32) -> ResultData {
+        if path == Path::new("/in") {
+            return Ok(self.in_file.buf[offset as usize..].to_owned());
+        } else if path == Path::new("/out") {
+            return Ok(self.out_file.buf[offset as usize..].to_owned());
+        } else if let Some(name) = path.iter().nth(1) {
+            if let Some(dir) = self.dirs.get(name) {
+                if path.file_name() == Some(OsStr::new("in")) {
+                    return Ok(dir.in_file.buf[offset as usize..].to_owned());
+                } else if path.file_name() == Some(OsStr::new("out")) {
+                    return Ok(dir.out_file.buf[offset as usize..].to_owned());
+                }
+            }
+        }
+        return Err(ENOENT);
     }
 
-    fn read(&mut self,
-        _req: &Request,
-        req_ino: u64,
-        fh: u64,
-        offset: u64,
-        size: u32,
-        reply: ReplyData) {
-
-        if let Some(file) = self.files.get(&req_ino) {
-            reply.data(&file.buf[offset as usize..]);
-        } else {
-            reply.error(ENOENT);
+    fn truncate(&mut self,
+                _req: RequestInfo,
+                path: &Path,
+                _fh: Option<u64>,
+                _size: u64)
+                -> ResultEmpty {
+        if path == Path::new("/in") {
+            return Ok(());
+        } else if path == Path::new("/out") {
+            return Err(ENOTSUP);
+        } else if let Some(name) = path.iter().nth(1) {
+            if let Some(_dir) = self.dirs.get_mut(name) {
+                if path.file_name() == Some(OsStr::new("in")) {
+                    return Ok(());
+                } else if path.file_name() == Some(OsStr::new("out")) {
+                    return Err(ENOTSUP);
+                }
+            }
         }
+        return Err(ENOENT);
     }
 
     fn write(&mut self,
-         _req: &Request,
-         ino: u64,
-         _fh: u64,
-         offset: u64,
-         data: &[u8],
-         _flags: u32,
-         reply: ReplyWrite) {
-        println!("write(ino={}, offset={})", ino, offset);
-
-        match self.types.get(&ino) {
-            Some(&FuseFiletype::Dir) => {
-                reply.error(EISDIR);
-            },
-            Some(&FuseFiletype::InFile) => {
-                if let Some(ref mut file) = self.files.get_mut(&ino) {
-                    file.insert_data(&data);
-                    reply.written(data.len() as u32);
-                } else {
-                    reply.error(EIO); // This should never happen, I think
+             _req: RequestInfo,
+             path: &Path,
+             _fh: u64,
+             _offset: u64,
+             data: &[u8],
+             _flags: u32)
+             -> ResultWrite {
+        if path == Path::new("/in") {
+            &self.in_file.insert_data(&data);
+            return Ok(data.len() as u32);
+        } else if path == Path::new("/out") {
+            return Err(ENOTSUP);
+        } else if let Some(name) = path.iter().nth(1) {
+            if let Some(dir) = self.dirs.get_mut(name) {
+                if path.file_name() == Some(OsStr::new("in")) {
+                    &dir.in_file.insert_data(&data);
+                    return Ok(data.len() as u32);
+                } else if path.file_name() == Some(OsStr::new("out")) {
+                    return Err(ENOTSUP);
                 }
-            },
-            Some(&FuseFiletype::OutFile) => {
-                reply.error(ENOTSUP);
-            },
-            None => {
-                reply.error(ENOENT);
-            },
+            }
         }
+        return Err(ENOENT);
     }
 }
