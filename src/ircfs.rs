@@ -4,8 +4,8 @@ use libc::{ENOENT, ENOTSUP};
 extern crate fuse_mt;
 use fuse_mt::*;
 
-// extern crate irc;
-// use irc::client::prelude::*;
+extern crate irc;
+use irc::client::prelude::*;
 
 extern crate time;
 use time::Timespec;
@@ -15,18 +15,29 @@ use std::path::Path;
 use std::collections::HashMap;
 
 pub struct IrcFs {
-    dirs: HashMap<OsString, IrcDir>,
+    dirs: HashMap<OsString, ServerDir>,
     attr: FileAttr,
     in_file: IrcFile,
     out_file: IrcFile,
     highest_inode: u64,
 }
 
-struct IrcDir {
-    // server: IrcServer,
+struct ServerDir {
+    server: MockServer,
+    // channels: HashMap<String, ChannelDir>,
     attr: FileAttr,
     in_file: IrcFile,
     out_file: IrcFile,
+}
+
+struct ChannelDir {
+    attr: FileAttr,
+    in_file: IrcFile,
+    out_file: IrcFile,
+}
+
+struct MockServer {
+    channels: HashMap<String, ()>,
 }
 
 pub struct IrcFile {
@@ -34,8 +45,8 @@ pub struct IrcFile {
     buf: Vec<u8>,
 }
 
-impl IrcDir {
-    fn new(ino: u64, in_inode: u64, out_inode: u64) -> Self {
+impl ServerDir {
+    fn new(ino: u64) -> Self {
         let init_time = time::get_time();
 
         let attr = FileAttr {
@@ -55,10 +66,54 @@ impl IrcDir {
             flags: 0,
         };
 
-        IrcDir {
+        ServerDir {
+            server: MockServer::new(),
             attr: attr,
-            in_file: IrcFile::new(in_inode),
-            out_file: IrcFile::new(out_inode),
+            in_file: IrcFile::new(ino + 1),
+            out_file: IrcFile::new(ino + 2),
+        }
+    }
+}
+
+impl ChannelDir {
+    fn new(ino: u64) -> Self {
+        let init_time = time::get_time();
+
+        let attr = FileAttr {
+            ino: ino,
+            size: 4096,
+            blocks: 8,
+            atime: init_time,
+            mtime: init_time,
+            ctime: init_time,
+            crtime: init_time,
+            kind: FileType::Directory,
+            perm: 0o755,
+            nlink: 1,
+            uid: 0,
+            gid: 0,
+            rdev: 0,
+            flags: 0,
+        };
+
+        ChannelDir {
+            attr: attr,
+            in_file: IrcFile::new(ino + 1),
+            out_file: IrcFile::new(ino + 2),
+        }
+    }
+}
+
+impl MockServer {
+    fn new() -> Self {
+        let mut channels = HashMap::new();
+
+        channels.insert("##linux".to_string(), ());
+        channels.insert("#ubuntu".to_string(), ());
+        channels.insert("#bash".to_string(), ());
+
+        MockServer {
+            channels: channels,
         }
     }
 }
@@ -129,37 +184,11 @@ impl IrcFs {
     // pub fn add_server(&mut self, name: Option<OsString>, server: IrcServer) {
     pub fn add_server(&mut self, alias: OsString) {
         let dir_ino = self.highest_inode + 1;
-        let in_ino = dir_ino + 1;
-        let out_ino = dir_ino + 2;
 
-        self.dirs.insert(alias, IrcDir::new(dir_ino, in_ino, out_ino));
+        self.dirs.insert(alias, ServerDir::new(dir_ino));
         self.highest_inode += 3;
         self.attr.nlink += 1;
     }
-
-    // pub fn entry(&self, path: &Path) -> Option<(OsString, FileType)> {
-    //     if path == Path::new("/") {
-    //         return Some(OsString::from("/"), FileType::Directory);
-    //     } else if path == Path::new("/in") {
-    //         return Some(OsString::from("in"), FileType::RegularFile);
-    //     } else if path == Path::new("/out") {
-    //         return Some(OsString::from("out"), FileType::RegularFile);
-    //     }
-
-    //     if let Some(parent) = path.parent() {
-    //         if let Some(dir) = self.dirs.get(OsStr::new(parent)) {
-    //             if path.file_name() == Some(OsStr::new("in")) {
-    //                 return Some(OsString::from("in"), FileType::RegularFile);
-    //             } else if path.file_name() == Some(OsStr::new("out")) {
-    //                 return Some(OsString::from("out"), FileType::RegularFile);
-    //             } else {
-    //                 return Some(OsString::from(OsStr::new(parent)), FileType::Directory);
-    //             }
-    //         }
-    //     }
-
-    //     None
-    // }
 
     pub fn attr(&self, path: &Path) -> Option<FileAttr> {
         if path == Path::new("/") {
@@ -287,44 +316,6 @@ impl FilesystemMT for IrcFs {
             Err(ENOENT)
         }
     }
-
-    // // fn setattr(&mut self,
-    // //    _req: &Request,
-    // //    ino: u64,
-    // //    _mode: Option<u32>,
-    // //    _uid: Option<u32>,
-    // //    _gid: Option<u32>,
-    // //    size: Option<u64>,
-    // //    _atime: Option<Timespec>,
-    // //    _mtime: Option<Timespec>,
-    // //    _fh: Option<u64>,
-    // //    _crtime: Option<Timespec>,
-    // //    _chgtime: Option<Timespec>,
-    // //    _bkuptime: Option<Timespec>,
-    // //    _flags: Option<u32>,
-    // //    reply: ReplyAttr) {
-    // //     match self.types.get(&ino) {
-    // //         Some(&FuseFiletype::Dir) => {
-    // //         },
-    // //         Some(&FuseFiletype::InFile) => {
-    // //             if size == Some(0) {
-    // //                 let ttl = Timespec::new(1, 0);
-    // //                 reply.attr(&ttl, &self.files[&ino].attr);
-    // //                 return;
-    // //             }
-    // //         },
-    // //         Some(&FuseFiletype::OutFile) => {
-    // //         },
-    // //         None => {
-    // //         },
-    // //     }
-    // //     reply.error(ENOTSUP);
-    // // }
-
-    // fn open(&mut self, _req: &Request, ino: u64, flags: u32, reply: ReplyOpen) {
-    //     println!("opened(ino={}, flags={})", ino, flags);
-    //     reply.opened(0, flags);
-    // }
 
     fn read(&mut self,_req:RequestInfo,path:&Path,_fh:u64,offset:u64,_size:u32) -> ResultData {
         if path == Path::new("/in") {
