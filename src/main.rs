@@ -18,7 +18,7 @@ pub mod ircfs;
 use ircfs::*;
 
 fn main() {
-    let matches = App::new("riiir")
+    let matches = App::new("ircfs")
         .arg(Arg::with_name("mountpoint")
              .value_name("PATH")
              .required(true)

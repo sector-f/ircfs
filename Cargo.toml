@@ -1,5 +1,5 @@
 [package]
-name = "riiir"
+name = "ircfs"
 version = "0.1.0"
 authors = ["Adam <sector-f@users.noreply.github.com>"]
 
