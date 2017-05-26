@@ -11,15 +11,51 @@ extern crate time;
 use time::Timespec;
 
 use std::ffi::{OsStr, OsString};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 
+// Somewhere, there needs to be a list of servers
+// Messages received by the server need to be sent to a certain
+// ChannelDir
+//
+// Maybe the Buffer should be part of a ChannelDir?
+// Maybe IrcFile shouldn't be a thing?
+// But there still needs to be some way to track the attr...
+//
+// struct ChannelDir {
+//     in_buf: Vec<u8>,
+//     out_buf: Vec<u8>,
+//     attr: FileAttr,
+//     infile_attr: FileAttr,
+//     outfile_attr: FileAttr,
+// }
+//
+// And I still need to figure out how to handle threads
+// Perhaps I should write some code using the rand crate
+// to randomly send fake messages to my fake servers to get
+// that part fully bootstrapped
+
 pub struct IrcFs {
-    dirs: HashMap<OsString, ServerDir>,
-    attr: FileAttr,
-    in_file: IrcFile,
-    out_file: IrcFile,
+    files: HashMap<PathBuf, FuseFile>,
+    // dirs: HashMap<OsString, ServerDir>,
+    // attr: FileAttr,
+    // in_file: IrcFile,
+    // out_file: IrcFile,
     highest_inode: u64,
+}
+
+struct Directory {
+    attr: FileAttr,
+    server: Option<MockServer>,
+    dirs: Vec<Directory>,
+}
+
+enum FuseFile {
+    // Root(RootDir),
+    Server(ServerDir),
+    Channel(ChannelDir),
+    InFile(IrcBuffer),
+    OutFile(IrcBuffer),
 }
 
 struct ServerDir {
@@ -40,9 +76,10 @@ struct MockServer {
     channels: HashMap<String, ()>,
 }
 
-pub struct IrcFile {
+// Better name than IrcFile?
+pub struct IrcBuffer {
     attr: FileAttr,
-    buf: Vec<u8>,
+    data: Vec<u8>,
 }
 
 impl ServerDir {
@@ -240,9 +277,9 @@ impl FilesystemMT for IrcFs {
         }
 
         // let config = Config {
-        //     nickname: Some("riiir-nickname".to_string()),
-        //     username: Some("riiir-username".to_string()),
-        //     realname: Some("riiir-realname".to_string()),
+        //     nickname: Some("ircfs-nickname".to_string()),
+        //     username: Some("ircfs-username".to_string()),
+        //     realname: Some("ircfs-realname".to_string()),
         //     server: Some("irc.rizon.net".to_string()),
         //     channels: Some(vec![
         //         "#cosarara".to_string(),

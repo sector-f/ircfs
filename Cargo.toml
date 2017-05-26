@@ -3,11 +3,14 @@ name = "ircfs"
 version = "0.1.0"
 authors = ["Adam <sector-f@users.noreply.github.com>"]
 
+[lib]
+doc = false
+
 [dependencies]
 toml = "0.4.0"
 serde = "1.0.2"
 serde_derive = "1.0.2"
-irc = "0.11.7"
+irc = "0.11.8"
 fuse_mt = { git = "https://github.com/sector-f/fuse-mt.git" }
 daemonize = "0.2.3"
 clap = "2.24.1"

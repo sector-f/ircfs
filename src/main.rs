@@ -14,8 +14,11 @@ use std::env::current_dir;
 use std::process::exit;
 use std::path::PathBuf;
 
-pub mod ircfs;
-use ircfs::*;
+pub mod new_ircfs;
+use new_ircfs::*;
+
+// pub mod ircfs;
+// use ircfs::*;
 
 fn main() {
     let matches = App::new("ircfs")
