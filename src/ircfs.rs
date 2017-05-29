@@ -14,27 +14,6 @@ use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 
-// Somewhere, there needs to be a list of servers
-// Messages received by the server need to be sent to a certain
-// ChannelDir
-//
-// Maybe the Buffer should be part of a ChannelDir?
-// Maybe IrcFile shouldn't be a thing?
-// But there still needs to be some way to track the attr...
-//
-// struct ChannelDir {
-//     in_buf: Vec<u8>,
-//     out_buf: Vec<u8>,
-//     attr: FileAttr,
-//     infile_attr: FileAttr,
-//     outfile_attr: FileAttr,
-// }
-//
-// And I still need to figure out how to handle threads
-// Perhaps I should write some code using the rand crate
-// to randomly send fake messages to my fake servers to get
-// that part fully bootstrapped
-
 pub struct IrcFs {
     files: HashMap<PathBuf, FuseFile>,
     // dirs: HashMap<OsString, ServerDir>,

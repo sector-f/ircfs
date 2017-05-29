@@ -10,7 +10,7 @@ use std::path::{self, Path};
 
 #[derive(Debug)]
 pub struct IrcDir {
-    map: HashMap<OsString, Node>,
+    pub map: HashMap<OsString, Node>,
     attr: FileAttr,
 }
 
@@ -66,7 +66,7 @@ impl IrcDir {
 
         for segment in iter {
             match *node {
-                Node::F(ref file) => return None,
+                Node::F(ref _file) => return None,
                 Node::D(ref dir) => node = match dir.map.get(segment) {
                     Some(node) => node,
                     None => return None,
@@ -90,7 +90,7 @@ impl IrcDir {
 
         for segment in iter {
             match *{node} { // the trick is the {}
-                Node::F(ref mut file) => return None,
+                Node::F(ref mut _file) => return None,
                 Node::D(ref mut dir) => node = match dir.map.get_mut(segment) {
                     Some(node) => node,
                     None => return None,
@@ -101,7 +101,9 @@ impl IrcDir {
         Some(node)
     }
 
-    pub fn insert_node(&mut self, path: &Path, node: Node) -> Result<(),()> {
+    pub fn insert_node<P: AsRef<Path>>(&mut self, path: P, node: Node) -> Result<(),()> {
+        let path = path.as_ref();
+
         let parent = path.parent();
         let filename = path.file_name().ok_or(())?;
 
@@ -115,6 +117,9 @@ impl IrcDir {
             if let Some(segment) = parent {
                 if let Some(&mut Node::D(ref mut dir)) = self.get_mut(segment) {
                     if let None = dir.get(Path::new(filename)) {
+                        if let Node::D(ref _dir) = node {
+                            dir.attr.nlink += 1;
+                        }
                         dir.map.insert(filename.to_owned(), node);
                         return Ok(());
                     }
