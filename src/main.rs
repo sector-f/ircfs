@@ -9,16 +9,12 @@ use clap::{App, Arg};
 extern crate daemonize;
 use daemonize::Daemonize;
 
-
 use std::env::current_dir;
 use std::process::exit;
 use std::path::PathBuf;
 
-pub mod new_ircfs;
-use new_ircfs::*;
-
-// pub mod ircfs;
-// use ircfs::*;
+extern crate ircfs;
+use ircfs::new_ircfs::*;
 
 fn main() {
     let matches = App::new("ircfs")
