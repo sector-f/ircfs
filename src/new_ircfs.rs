@@ -71,11 +71,24 @@ impl FilesystemMT for IrcFs {
         let uid = self.root.attr().uid;
         let gid = self.root.attr().gid;
 
-        // Add servers
+        let ino = self.next_inode();
+        self.insert_node("/in", IrcFile::new(ino, uid, gid).into()).unwrap();
+        let ino = self.next_inode();
+        self.insert_node("/out", IrcFile::new(ino, uid, gid).into()).unwrap();
+
         let ino = self.next_inode();
         self.insert_node("/freenode", IrcDir::new(ino, uid, gid).into()).unwrap();
         let ino = self.next_inode();
+        self.insert_node("/freenode/in", IrcFile::new(ino, uid, gid).into()).unwrap();
+        let ino = self.next_inode();
+        self.insert_node("/freenode/out", IrcFile::new(ino, uid, gid).into()).unwrap();
+
+        let ino = self.next_inode();
         self.insert_node("/rizon", IrcDir::new(ino, uid, gid).into()).unwrap();
+        let ino = self.next_inode();
+        self.insert_node("/rizon/in", IrcFile::new(ino, uid, gid).into()).unwrap();
+        let ino = self.next_inode();
+        self.insert_node("/rizon/out", IrcFile::new(ino, uid, gid).into()).unwrap();
 
         let ino = self.next_inode();
         self.insert_node("/freenode/##linux", IrcDir::new(ino, uid, gid).into()).unwrap();
@@ -83,8 +96,6 @@ impl FilesystemMT for IrcFs {
         self.insert_node("/freenode/#bash", IrcDir::new(ino, uid, gid).into()).unwrap();
         let ino = self.next_inode();
         self.insert_node("/rizon/#code", IrcDir::new(ino, uid, gid).into()).unwrap();
-        let ino = self.next_inode();
-        self.insert_node("/rizon/#ircfs", IrcDir::new(ino, uid, gid).into()).unwrap();
 
         for node in self.root.map.values_mut() {
             if let &mut Node::D(ref mut server_dir) = node {
