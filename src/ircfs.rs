@@ -2,7 +2,7 @@ extern crate fuse;
 use fuse::*;
 
 extern crate libc;
-use libc::{c_int, ENOENT, /*ENOTSUP*/};
+use libc::{c_int, ENOENT, EISDIR, /*ENOTSUP*/};
 
 extern crate time;
 use time::Timespec;
@@ -25,11 +25,15 @@ impl IrcFs {
         let mut ino_map = HashMap::new();
         ino_map.insert(1, PathBuf::from("/"));
 
-        IrcFs {
+        let mut filesystem = IrcFs {
             root: IrcDir::new(1, uid, gid).into(),
             inodes: ino_map,
             highest_inode: 1,
-        }
+        };
+
+        let _ = filesystem.make_in_file("/in");
+        let _ = filesystem.make_out_file("/out");
+        filesystem
     }
 
     pub fn make_dir<P: AsRef<Path>>(&mut self, path: P) -> Result<(), ()> {
@@ -45,8 +49,8 @@ impl IrcFs {
             Ok(_) => {
                 self.highest_inode += 1;
                 self.inodes.insert(self.highest_inode, path.to_owned());
-                let _ = self.make_file(path.join(Path::new("in")));
-                let _ = self.make_file(path.join(Path::new("out")));
+                let _ = self.make_in_file(path.join(Path::new("in")));
+                let _ = self.make_out_file(path.join(Path::new("out")));
                 return Ok(());
             },
             Err(_) => {
@@ -55,14 +59,35 @@ impl IrcFs {
         }
     }
 
-    pub fn make_file<P: AsRef<Path>>(&mut self, path: P) -> Result<(), ()> {
+    pub fn make_in_file<P: AsRef<Path>>(&mut self, path: P) -> Result<(), ()> {
         let path = path.as_ref();
 
         let ino = self.highest_inode + 1;
         let uid = self.root.attr().uid;
         let gid = self.root.attr().gid;
 
-        let file = IrcFile::new(ino, uid, gid);
+        let file = IrcFile::new_rw(ino, uid, gid);
+
+        match self.insert_node(path, file.into()) {
+            Ok(_) => {
+                self.highest_inode += 1;
+                self.inodes.insert(self.highest_inode, path.to_owned());
+                return Ok(());
+            },
+            Err(_) => {
+                return Err(());
+            }
+        }
+    }
+
+    pub fn make_out_file<P: AsRef<Path>>(&mut self, path: P) -> Result<(), ()> {
+        let path = path.as_ref();
+
+        let ino = self.highest_inode + 1;
+        let uid = self.root.attr().uid;
+        let gid = self.root.attr().gid;
+
+        let file = IrcFile::new_ro(ino, uid, gid);
 
         match self.insert_node(path, file.into()) {
             Ok(_) => {
@@ -91,6 +116,16 @@ impl IrcFs {
 
     pub fn get_by_ino(&self, ino: u64) -> Option<&Node> {
         self.inodes.get(&ino).and_then(|path| self.get_node(&path))
+    }
+
+    pub fn get_mut_by_ino(&mut self, ino: u64) -> Option<&mut Node> {
+        // TODO: get rid of to_owned() here
+        let path = match self.inodes.get(&ino) {
+            Some(path) => { path.to_owned() },
+            None => { return None; },
+        };
+
+        self.get_mut_node(&path)
     }
 
     pub fn get_node<P: AsRef<Path>>(&self, path: P) -> Option<&Node> {
@@ -152,6 +187,43 @@ impl Filesystem for IrcFs {
             }
         }
         reply.error(ENOENT);
+    }
+
+    fn open(&mut self, _req: &Request, ino: u64, flags: u32, reply: ReplyOpen) {
+        if let Some(_node) = self.get_by_ino(ino) {
+            reply.opened(0, flags);
+        } else {
+            reply.error(ENOENT);
+        }
+    }
+
+    fn read(&mut self, _req: &Request, ino: u64, _fh: u64, offset: u64, _size: u32, reply: ReplyData) {
+        match self.get_by_ino(ino) {
+            Some(&Node::F(ref file)) => {
+                reply.data(&file.data()[offset as usize..]);
+            },
+            Some(&Node::D(ref _dir)) => {
+                reply.error(EISDIR);
+            },
+            None => {
+                reply.error(ENOENT);
+            },
+        }
+    }
+
+    fn write(&mut self, _req: &Request, ino: u64, _fh: u64, _offset: u64, data: &[u8], _flags: u32, reply: ReplyWrite) {
+        match self.get_mut_by_ino(ino) {
+            Some(&mut Node::F(ref mut file)) => {
+                file.insert_data(&data);
+                reply.written(data.len() as u32);
+            },
+            Some(&mut Node::D(ref mut _dir)) => {
+                reply.error(EISDIR);
+            },
+            None => {
+                reply.error(ENOENT);
+            },
+        }
     }
 
     fn readdir(&mut self, _req: &Request, ino: u64, _fh: u64, offset: u64, mut reply: ReplyDirectory) {

@@ -175,7 +175,7 @@ impl From<IrcDir> for Node {
 // }
 
 impl IrcFile {
-    pub fn new(ino: u64, uid: u32, gid: u32) -> Self {
+    pub fn new_rw(ino: u64, uid: u32, gid: u32) -> Self {
         let init_time = time::get_time();
 
         let attr = FileAttr {
@@ -200,10 +200,39 @@ impl IrcFile {
             data: Vec::new(),
         }
     }
+    pub fn new_ro(ino: u64, uid: u32, gid: u32) -> Self {
+        let init_time = time::get_time();
+
+        let attr = FileAttr {
+            ino: ino,
+            size: 0,
+            blocks: 1,
+            atime: init_time,
+            mtime: init_time,
+            ctime: init_time,
+            crtime: init_time,
+            kind: FileType::RegularFile,
+            perm: 0o444,
+            nlink: 1,
+            uid: uid,
+            gid: gid,
+            rdev: 0,
+            flags: 0,
+        };
+
+        IrcFile {
+            attr: attr,
+            data: Vec::new(),
+        }
+    }
 
     pub fn insert_data(&mut self, data: &[u8]) {
         self.data.extend_from_slice(data);
         self.attr.size += data.len() as u64;
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.data
     }
 
     pub fn attr(&self) -> FileAttr {
