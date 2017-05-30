@@ -159,7 +159,7 @@ impl Filesystem for IrcFs {
             let parent_ino = if ino == 1 {
                 1
             } else {
-                self.get_node(&self.inodes[&ino]).unwrap().attr().ino
+                self.get_node(&self.inodes[&ino].parent().unwrap()).unwrap().attr().ino
             };
 
             reply.add(
