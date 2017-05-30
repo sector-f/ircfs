@@ -1,12 +1,10 @@
-use fuse_mt;
-use fuse_mt::{FileAttr, FileType};
+use fuse::{FileAttr, FileType};
 
 extern crate time;
-use time::get_time;
 
 use std::collections::HashMap;
-use std::ffi::{OsString, OsStr};
-use std::path::{self, Path};
+use std::ffi::OsString;
+use std::path::Path;
 
 #[derive(Debug)]
 pub struct IrcDir {
@@ -140,6 +138,20 @@ impl Node {
         match *self {
             Node::F(ref file) => file.attr,
             Node::D(ref dir) => dir.attr,
+        }
+    }
+
+    pub fn as_dir(&self) -> &IrcDir {
+        match *self {
+            Node::D(ref dir) => dir,
+            Node::F(ref _file) => panic!(),
+        }
+    }
+
+    pub fn as_mut_dir(&mut self) -> &mut IrcDir {
+        match *self {
+            Node::D(ref mut dir) => dir,
+            Node::F(ref mut _file) => panic!(),
         }
     }
 }

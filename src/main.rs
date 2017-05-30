@@ -1,5 +1,5 @@
 extern crate time;
-extern crate fuse_mt;
+extern crate fuse;
 extern crate irc;
 extern crate libc;
 
@@ -14,7 +14,7 @@ use std::process::exit;
 use std::path::PathBuf;
 
 extern crate ircfs;
-use ircfs::new_ircfs::*;
+use ircfs::ircfs::*;
 
 fn main() {
     let matches = App::new("ircfs")
@@ -53,11 +53,11 @@ fn main() {
     if matches.is_present("daemonize") {
         let daemon = Daemonize::new()
             .privileged_action(move || {
-                let _ = fuse_mt::mount(fuse_mt::FuseMT::new(IrcFs::new(uid, gid)), &mountpoint, &[]);
+                let _ = fuse::mount(IrcFs::new(uid, gid), &mountpoint, &[]);
             });
 
         let _ = daemon.start();
     } else {
-        let _ = fuse_mt::mount(fuse_mt::FuseMT::new(IrcFs::new(uid, gid)), &mountpoint, &[]);
+        let _ = fuse::mount(IrcFs::new(uid, gid), &mountpoint, &[]);
     }
 }

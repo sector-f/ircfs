@@ -11,7 +11,7 @@ toml = "0.4.0"
 serde = "1.0.2"
 serde_derive = "1.0.2"
 irc = "0.11.8"
-fuse_mt = { git = "https://github.com/sector-f/fuse-mt.git" }
+fuse = "0.3.0"
 daemonize = "0.2.3"
 clap = "2.24.1"
 libc = "0.2.22"
