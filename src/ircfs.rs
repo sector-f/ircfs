@@ -2,7 +2,7 @@ extern crate fuse;
 use fuse::*;
 
 extern crate libc;
-use libc::{c_int, ENOENT, EISDIR, /*ENOTSUP*/};
+use libc::{c_int, ENOENT, EISDIR, ENOTSUP, ENOSYS};
 
 extern crate time;
 use time::Timespec;
@@ -211,11 +211,50 @@ impl Filesystem for IrcFs {
         }
     }
 
+    fn setattr(&mut self,
+       _req: &Request,
+       ino: u64,
+       _mode: Option<u32>,
+       _uid: Option<u32>,
+       _gid: Option<u32>,
+       size: Option<u64>,
+       _atime: Option<Timespec>,
+       _mtime: Option<Timespec>,
+       _fh: Option<u64>,
+       _crtime: Option<Timespec>,
+       _chgtime: Option<Timespec>,
+       _bkuptime: Option<Timespec>,
+       _flags: Option<u32>,
+        reply: ReplyAttr) {
+        if let Some(_size) = size {
+            match self.get_mut_by_ino(ino) {
+                Some(&mut Node::F(ref mut file)) => {
+                    reply.attr(&Timespec::new(1, 0), &file.attr());
+                    return;
+                },
+                Some(&mut Node::D(ref mut dir)) => {
+                    reply.attr(&Timespec::new(1, 0), &dir.attr());
+                    return;
+                },
+                _ => {
+                    reply.error(ENOENT);
+                    return;
+                },
+            }
+        }
+
+        reply.error(ENOSYS);
+    }
+
     fn write(&mut self, _req: &Request, ino: u64, _fh: u64, _offset: u64, data: &[u8], _flags: u32, reply: ReplyWrite) {
         match self.get_mut_by_ino(ino) {
             Some(&mut Node::F(ref mut file)) => {
-                file.insert_data(&data);
-                reply.written(data.len() as u32);
+                if file.is_readonly() {
+                    reply.error(ENOTSUP);
+                } else {
+                    file.insert_data(&data);
+                    reply.written(data.len() as u32);
+                }
             },
             Some(&mut Node::D(ref mut _dir)) => {
                 reply.error(EISDIR);

@@ -21,6 +21,7 @@ pub enum Node {
 #[derive(Debug)]
 pub struct IrcFile {
     attr: FileAttr,
+    ro: bool,
     data: Vec<u8>,
 }
 
@@ -37,7 +38,7 @@ impl IrcDir {
             ctime: init_time,
             crtime: init_time,
             kind: FileType::Directory,
-            perm: 0o755,
+            perm: 0o700,
             nlink: 2,
             uid: uid,
             gid: gid,
@@ -187,7 +188,7 @@ impl IrcFile {
             ctime: init_time,
             crtime: init_time,
             kind: FileType::RegularFile,
-            perm: 0o644,
+            perm: 0o600,
             nlink: 1,
             uid: uid,
             gid: gid,
@@ -197,6 +198,7 @@ impl IrcFile {
 
         IrcFile {
             attr: attr,
+            ro: false,
             data: Vec::new(),
         }
     }
@@ -212,7 +214,7 @@ impl IrcFile {
             ctime: init_time,
             crtime: init_time,
             kind: FileType::RegularFile,
-            perm: 0o444,
+            perm: 0o400,
             nlink: 1,
             uid: uid,
             gid: gid,
@@ -222,8 +224,13 @@ impl IrcFile {
 
         IrcFile {
             attr: attr,
+            ro: true,
             data: Vec::new(),
         }
+    }
+
+    pub fn is_readonly(&self) -> bool {
+        self.ro
     }
 
     pub fn insert_data(&mut self, data: &[u8]) {
