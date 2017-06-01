@@ -8,20 +8,23 @@ extern crate time;
 use time::Timespec;
 
 use filesystem::*;
+use config::*;
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
+use std::clone::Clone;
 
 #[derive(Debug)]
 pub struct IrcFs {
     root: Node,
     inodes: HashMap<u64, PathBuf>,
     highest_inode: u64,
+    global_config: GlobalConfig,
 }
 
 impl IrcFs {
-    pub fn new(uid: u32, gid: u32) -> Self {
+    pub fn new(config: &FsConfig, uid: u32, gid: u32) -> Self {
         let mut ino_map = HashMap::new();
         ino_map.insert(1, PathBuf::from("/"));
 
@@ -29,6 +32,7 @@ impl IrcFs {
             root: IrcDir::new(1, uid, gid).into(),
             inodes: ino_map,
             highest_inode: 1,
+            global_config: config.global.clone(),
         };
 
         let _ = filesystem.make_in_file("/in");

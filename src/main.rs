@@ -1,3 +1,5 @@
+extern crate serde;
+extern crate toml;
 extern crate time;
 extern crate fuse;
 extern crate irc;
@@ -12,6 +14,8 @@ use daemonize::Daemonize;
 use std::env::current_dir;
 use std::process::exit;
 use std::path::PathBuf;
+use std::fs::File;
+use std::io::{stderr, Read, Write};
 
 extern crate ircfs;
 use ircfs::ircfs::*;
@@ -27,11 +31,32 @@ fn main() {
              .help("Specify path to config file")
              .short("c")
              .long("config")
+             .required(true)
              .takes_value(true))
         .arg(Arg::with_name("daemonize")
              .short("d")
              .long("daemonize"))
         .get_matches();
+
+    let config = match File::open(matches.value_of_os("config").unwrap()) {
+        Ok(mut file) => {
+            let mut buf = String::new();
+            let _ = file.read_to_string(&mut buf);
+            match toml::from_str(&buf) {
+                Ok(config) => {
+                    config
+                },
+                Err(e) => {
+                    let _ = writeln!(stderr(), "Error parsing config file: {}", e);
+                    exit(1);
+                },
+            }
+        },
+        Err(e) => {
+            let _ = writeln!(stderr(), "Error reading config file: {}", e);
+            exit(1);
+        },
+    };
 
     let mut mountpoint = PathBuf::from(matches.value_of_os("mountpoint").unwrap());
 
@@ -53,11 +78,11 @@ fn main() {
     if matches.is_present("daemonize") {
         let daemon = Daemonize::new()
             .privileged_action(move || {
-                let _ = fuse::mount(IrcFs::new(uid, gid), &mountpoint, &[]);
+                let _ = fuse::mount(IrcFs::new(&config, uid, gid), &mountpoint, &[]);
             });
 
         let _ = daemon.start();
     } else {
-        let _ = fuse::mount(IrcFs::new(uid, gid), &mountpoint, &[]);
+        let _ = fuse::mount(IrcFs::new(&config, uid, gid), &mountpoint, &[]);
     }
 }

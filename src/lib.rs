@@ -4,6 +4,7 @@ extern crate serde;
 extern crate fuse;
 extern crate time;
 extern crate libc;
+extern crate irc;
 
 pub mod config;
 pub mod ircfs;
