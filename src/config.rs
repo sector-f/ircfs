@@ -4,7 +4,7 @@ use irc::client::prelude::Config as IrcConfig;
 use std::collections::HashMap;
 // use std::Default;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FsConfig {
     pub global: GlobalConfig,
     #[serde(rename = "server")]
@@ -21,7 +21,7 @@ pub struct GlobalConfig {
     owners: Option<Vec<String>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ServerConfig {
     nickname: Option<String>,
     nick_password: Option<String>,
@@ -54,7 +54,8 @@ macro_rules! extract {
     }
 }
 
-pub fn convert_config(config: FsConfig) -> Vec<IrcConfig> {
+pub fn convert_config(config: &FsConfig) -> Vec<IrcConfig> {
+    let config = config.clone();
     let mut irc_configs = Vec::new();
 
     for server in config.servers {

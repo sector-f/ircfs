@@ -25,8 +25,11 @@ pub struct IrcFs {
 
 impl IrcFs {
     pub fn new(config: &FsConfig, uid: u32, gid: u32) -> Self {
+
         let mut ino_map = HashMap::new();
         ino_map.insert(1, PathBuf::from("/"));
+
+        let configs = convert_config(config);
 
         let mut filesystem = IrcFs {
             root: IrcDir::new(1, uid, gid).into(),
@@ -37,6 +40,7 @@ impl IrcFs {
 
         let _ = filesystem.make_in_file("/in");
         let _ = filesystem.make_out_file("/out");
+
         filesystem
     }
 
