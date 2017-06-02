@@ -30,6 +30,7 @@ pub struct ServerConfig {
     realname: Option<String>,
     owners: Option<Vec<String>>,
     server: String,
+    alias: Option<String>,
     port: Option<u16>,
     password: Option<String>,
     use_ssl: Option<bool>,
