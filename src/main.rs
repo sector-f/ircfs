@@ -1,9 +1,12 @@
 extern crate serde;
 extern crate toml;
 extern crate time;
-extern crate fuse;
 extern crate irc;
 extern crate libc;
+extern crate num_cpus;
+
+extern crate fuse_mt;
+use fuse_mt::FuseMT;
 
 extern crate clap;
 use clap::{App, Arg};
@@ -18,7 +21,8 @@ use std::fs::File;
 use std::io::{stderr, Read, Write};
 
 extern crate ircfs;
-use ircfs::ircfs::*;
+// use ircfs::tree_fs::*;
+use ircfs::mem_safe_ircfs::*;
 
 fn main() {
     let matches = App::new("ircfs")
@@ -37,6 +41,8 @@ fn main() {
              .short("d")
              .long("daemonize"))
         .get_matches();
+
+    let num_threads = num_cpus::get();
 
     let config = match File::open(matches.value_of_os("config").unwrap()) {
         Ok(mut file) => {
@@ -78,11 +84,11 @@ fn main() {
     if matches.is_present("daemonize") {
         let daemon = Daemonize::new()
             .privileged_action(move || {
-                let _ = fuse::mount(IrcFs::new(&config, uid, gid), &mountpoint, &[]);
+                let _ = fuse_mt::mount(FuseMT::new(IrcFs::new(&config, uid, gid), num_threads), &mountpoint, &[]);
             });
 
         let _ = daemon.start();
     } else {
-        let _ = fuse::mount(IrcFs::new(&config, uid, gid), &mountpoint, &[]);
+        let _ = fuse_mt::mount(FuseMT::new(IrcFs::new(&config, uid, gid), num_threads), &mountpoint, &[]);
     }
 }

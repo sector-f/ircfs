@@ -5,7 +5,6 @@ extern crate time;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::path::Path;
-use std::sync::RwLock;
 
 #[derive(Debug)]
 pub struct IrcDir {
