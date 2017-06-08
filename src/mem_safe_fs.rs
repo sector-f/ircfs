@@ -1,4 +1,4 @@
-use fuse_mt::{FileAttr, FileType, RequestInfo};
+use fuse_mt::{FileAttr, FileType, RequestInfo, DirectoryEntry};
 
 extern crate time;
 
@@ -47,12 +47,22 @@ impl Filesystem {
         self.fake_root.mk_rw_file(path, uid, gid)
     }
 
-    pub fn dir_list<P: AsRef<Path>>(&self, path: P, _req: &RequestInfo) -> Option<&[&OsStr]> {
-        // if let Some(&Node::D(ref dir)) = self.get(path) {
-            unimplemented!();
-        // } else {
-            // None
-        // }
+    pub fn dir_entries<P: AsRef<Path>>(&self, path: P, req: &RequestInfo)
+    -> io::Result<Vec<DirectoryEntry>> {
+        if let Ok(&Node::D(ref dir)) = self.get(path, req) {
+            let mut entries = Vec::new();
+            for (name, node) in &dir.tree {
+                entries.push(
+                    DirectoryEntry {
+                        name: name.to_owned(),
+                        kind: node.attr().kind,
+                    }
+                );
+            }
+            Ok(entries)
+        } else {
+            Err(Error::from(ErrorKind::InvalidInput))
+        }
     }
 
     fn root_dir(&self) -> &FuseDir {
