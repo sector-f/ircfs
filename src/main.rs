@@ -21,8 +21,7 @@ use std::fs::File;
 use std::io::{stderr, Read, Write};
 
 extern crate ircfs;
-// use ircfs::tree_fs::*;
-use ircfs::mem_safe_ircfs::*;
+use ircfs::ircfs::*;
 
 fn main() {
     let matches = App::new("ircfs")

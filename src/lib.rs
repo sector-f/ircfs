@@ -8,11 +8,7 @@ extern crate libc;
 extern crate irc;
 extern crate num_cpus;
 
-pub mod config;
-// pub mod ircfs;
-// pub mod filesystem;
-
-// pub mod tree_fs;
-pub mod mem_safe_fs;
-pub mod mem_safe_ircfs;
+pub mod ircfs;
+pub mod filesystem;
 pub mod permissions;
+pub mod config;
