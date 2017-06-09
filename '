@@ -21,12 +21,28 @@ impl Filesystem {
         }
     }
 
-    pub fn get<P: AsRef<Path>>(&self, path: P, req: &RequestInfo) -> Option<&Node> {
-        self.fake_root.get(&path)
+    pub fn get<P: AsRef<Path>>(&self, path: P, req: &RequestInfo) -> io::Result<&Node> {
+        if self.can_read(&path, req) {
+            if let Some(node) = self.fake_root.get(&path) {
+                Ok(node)
+            } else {
+                Err(Error::from(ErrorKind::PermissionDenied))
+            }
+        } else {
+            Err(Error::from(ErrorKind::PermissionDenied))
+        }
     }
 
-    pub fn get_mut<P: AsRef<Path>>(&mut self, path: P, req: &RequestInfo) -> Option<&mut Node> {
-        self.fake_root.get_mut(&path)
+    pub fn get_mut<P: AsRef<Path>>(&mut self, path: P, req: &RequestInfo) -> io::Result<&mut Node> {
+        if self.can_read(&path, req) {
+            if let Some(node) = self.fake_root.get_mut(&path) {
+                Ok(node)
+            } else {
+                Err(Error::from(ErrorKind::PermissionDenied))
+            }
+        } else {
+            Err(Error::from(ErrorKind::PermissionDenied))
+        }
     }
 
     pub fn mk_dir<P: AsRef<Path>>(&mut self, path: P, _req: &RequestInfo) -> io::Result<()> {
@@ -48,8 +64,8 @@ impl Filesystem {
     }
 
     pub fn dir_entries<P: AsRef<Path>>(&self, path: P, req: &RequestInfo)
-    -> Option<Vec<DirectoryEntry>> {
-        if let Some(&Node::D(ref dir)) = self.get(path, req) {
+    -> io::Result<Vec<DirectoryEntry>> {
+        if let Ok(&Node::D(ref dir)) = self.get(path, req) {
             let mut entries = Vec::new();
             for (name, node) in &dir.tree {
                 entries.push(
@@ -59,23 +75,23 @@ impl Filesystem {
                     }
                 );
             }
-            Some(entries)
+            Ok(entries)
         } else {
-            None
+            Err(Error::from(ErrorKind::InvalidInput))
         }
     }
 
     fn can_read<P: AsRef<Path>>(&self, path: P, req: &RequestInfo) -> bool {
         let file = self.fake_root.get(path).unwrap();
-        true
+        unimplemented!();
     }
 
     fn can_write<P: AsRef<Path>>(&self, path: P, req: &RequestInfo) -> bool {
-        true
+        unimplemented!();
     }
 
     fn can_execute<P: AsRef<Path>>(&self, path: P, req: &RequestInfo) -> bool {
-        true
+        unimplemented!();
     }
 
     fn root_dir(&self) -> &FuseDir {
@@ -208,10 +224,11 @@ impl FuseDir {
                     match self.get_mut(segment) {
                         Some(&mut Node::D(ref mut dir)) => {
                             if let Some(_e) = dir.get(Path::new(filename)) {
-                                return Err(Error::from(ErrorKind::AlreadyExists));
+                                dir.tree.insert(filename.to_owned(), node);
+                                Ok(())
+                            } else {
+                                Err(Error::from(ErrorKind::AlreadyExists))
                             }
-                            dir.tree.insert(filename.to_owned(), node);
-                            Ok(())
                         },
                         Some(&mut Node::F(ref mut _file)) => {
                             Err(Error::from(ErrorKind::Other))
