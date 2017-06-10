@@ -9,7 +9,7 @@ pub struct Mode {
 }
 
 impl Mode {
-    pub fn new(mode: u32) -> Result<Self, ()> {
+    pub fn new(mode: u16) -> Result<Self, ()> {
         Ok(Mode {
             special: SpecialPerms::new((0o7000 & mode) >> 9)?,
             user: Perms::new((0o700 & mode) >> 6)?,
@@ -18,7 +18,7 @@ impl Mode {
         })
     }
 
-    pub fn as_int(&self) -> u32 {
+    pub fn as_int(&self) -> u16 {
           self.special.as_int() * 0o1000
         + self.user.as_int()    * 0o100
         + self.group.as_int()   * 0o10
@@ -71,13 +71,13 @@ impl fmt::Display for Mode {
 
 #[derive(Debug, Clone, Copy)]
 pub struct SpecialPerms {
-    suid: bool,
-    sgid: bool,
-    sticky: bool,
+    pub suid: bool,
+    pub sgid: bool,
+    pub sticky: bool,
 }
 
 impl SpecialPerms {
-    pub fn new(int: u32) -> Result<Self, ()> {
+    pub fn new(int: u16) -> Result<Self, ()> {
         if int > 0b111 { return Err(()) }
 
         Ok(SpecialPerms {
@@ -87,8 +87,8 @@ impl SpecialPerms {
         })
     }
 
-    pub fn as_int(&self) -> u32 {
-        let mut value: u32 = 0;
+    pub fn as_int(&self) -> u16 {
+        let mut value: u16 = 0;
 
         if self.suid {
             value += 0b100
@@ -114,7 +114,7 @@ pub struct Perms {
 }
 
 impl Perms {
-    pub fn new(int: u32) -> Result<Self, ()> {
+    pub fn new(int: u16) -> Result<Self, ()> {
         if int > 0b111 { return Err(()) }
 
         Ok(Perms {
@@ -124,8 +124,8 @@ impl Perms {
         })
     }
 
-    pub fn as_int(&self) -> u32 {
-        let mut value: u32 = 0;
+    pub fn as_int(&self) -> u16 {
+        let mut value: u16 = 0;
 
         if self.read {
             value += 0b100

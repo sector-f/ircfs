@@ -1,11 +1,13 @@
-use fuse_mt::*;
-use filesystem::*;
 use config::FsConfig;
 use libc::{c_int, ENOENT, EACCES};
 use std::ops::Deref;
 use std::sync::{Arc, RwLock};
 use std::path::Path;
 use time::Timespec;
+
+use fuse_mt::*;
+use filesystem::*;
+use permissions::Mode;
 
 pub struct IrcFs {
     fs: Arc<RwLock<Filesystem>>,
@@ -23,12 +25,12 @@ impl FilesystemMT for IrcFs {
     fn init(&self, req: RequestInfo) -> ResultEmpty {
         let mut fs = self.fs.write().unwrap();
 
-        fs.mk_rw_file("/in", &req).unwrap();
-        fs.mk_ro_file("/out", &req).unwrap();
+        fs.mk_rw_file("/in").unwrap();
+        fs.mk_ro_file("/out").unwrap();
 
-        fs.mk_dir("/foo", &req).unwrap();
-        fs.mk_rw_file("/foo/in", &req).unwrap();
-        fs.mk_ro_file("/foo/out", &req).unwrap();
+        fs.mk_dir("/foo").unwrap();
+        fs.mk_rw_file("/foo/in").unwrap();
+        fs.mk_ro_file("/foo/out").unwrap();
 
         Ok(())
     }
@@ -44,7 +46,7 @@ impl FilesystemMT for IrcFs {
     fn getattr(&self, req: RequestInfo, path: &Path, _fh: Option<u64>) -> ResultEntry {
         let fs = self.fs.read().unwrap();
 
-        if let Some(node) = fs.get(path, &req) {
+        if let Some(node) = fs.get(path) {
             Ok((Timespec::new(1, 0), node.attr().clone()))
         } else {
             Err(ENOENT)
@@ -53,9 +55,15 @@ impl FilesystemMT for IrcFs {
 
     fn readdir(&self, req: RequestInfo, path: &Path, _fh: u64) -> ResultReaddir {
         let fs = self.fs.read().unwrap();
-        match fs.dir_entries(&path, &req) {
-            Some(entries) => Ok(entries),
-            None => Err(ENOENT),
+        let dir = fs.get(&path).unwrap(); // This fn should only get valid paths. I hope.
+
+        if can_read(&dir, &req) {
+            match fs.dir_entries(&path) {
+                Some(entries) => Ok(entries),
+                None => Err(ENOENT),
+            }
+        } else {
+            Err(EACCES)
         }
     }
 

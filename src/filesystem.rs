@@ -7,6 +7,8 @@ use std::ffi::{OsString, OsStr};
 use std::path::{PathBuf, Path};
 use std::io::{self, Error, ErrorKind};
 
+use permissions::*;
+
 pub struct Filesystem {
     fake_root: FuseDir,
 }
@@ -21,35 +23,35 @@ impl Filesystem {
         }
     }
 
-    pub fn get<P: AsRef<Path>>(&self, path: P, req: &RequestInfo) -> Option<&Node> {
+    pub fn get<P: AsRef<Path>>(&self, path: P) -> Option<&Node> {
         self.fake_root.get(&path)
     }
 
-    pub fn get_mut<P: AsRef<Path>>(&mut self, path: P, req: &RequestInfo) -> Option<&mut Node> {
+    pub fn get_mut<P: AsRef<Path>>(&mut self, path: P) -> Option<&mut Node> {
         self.fake_root.get_mut(&path)
     }
 
-    pub fn mk_dir<P: AsRef<Path>>(&mut self, path: P, _req: &RequestInfo) -> io::Result<()> {
+    pub fn mk_dir<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
         let uid = self.root_dir().attr.uid;
         let gid = self.root_dir().attr.gid;
         self.fake_root.mk_dir(path, uid, gid)
     }
 
-    pub fn mk_ro_file<P: AsRef<Path>>(&mut self, path: P, _req: &RequestInfo) -> io::Result<()> {
+    pub fn mk_ro_file<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
         let uid = self.root_dir().attr.uid;
         let gid = self.root_dir().attr.gid;
         self.fake_root.mk_ro_file(path, uid, gid)
     }
 
-    pub fn mk_rw_file<P: AsRef<Path>>(&mut self, path: P, _req: &RequestInfo) -> io::Result<()> {
+    pub fn mk_rw_file<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
         let uid = self.root_dir().attr.uid;
         let gid = self.root_dir().attr.gid;
         self.fake_root.mk_rw_file(path, uid, gid)
     }
 
-    pub fn dir_entries<P: AsRef<Path>>(&self, path: P, req: &RequestInfo)
+    pub fn dir_entries<P: AsRef<Path>>(&self, path: P)
     -> Option<Vec<DirectoryEntry>> {
-        if let Some(&Node::D(ref dir)) = self.get(path, req) {
+        if let Some(&Node::D(ref dir)) = self.get(path) {
             let mut entries = Vec::new();
             for (name, node) in &dir.tree {
                 entries.push(
@@ -63,19 +65,6 @@ impl Filesystem {
         } else {
             None
         }
-    }
-
-    fn can_read<P: AsRef<Path>>(&self, path: P, req: &RequestInfo) -> bool {
-        let file = self.fake_root.get(path).unwrap();
-        true
-    }
-
-    fn can_write<P: AsRef<Path>>(&self, path: P, req: &RequestInfo) -> bool {
-        true
-    }
-
-    fn can_execute<P: AsRef<Path>>(&self, path: P, req: &RequestInfo) -> bool {
-        true
     }
 
     fn root_dir(&self) -> &FuseDir {
@@ -304,5 +293,44 @@ impl From<FuseFile> for Node {
 impl From<FuseDir> for Node {
     fn from(d: FuseDir) -> Node {
         Node::D(d)
+    }
+}
+
+pub fn can_read(node: &Node, req: &RequestInfo) -> bool {
+    let attr = node.attr();
+    let mode = Mode::new(attr.perm).unwrap();
+
+    if attr.uid == req.uid {
+        mode.user.read
+    } else if attr.gid == req.gid {
+        mode.group.read
+    } else {
+        mode.other.read
+    }
+}
+
+pub fn can_write(node: &Node, req: &RequestInfo) -> bool {
+    let attr = node.attr();
+    let mode = Mode::new(attr.perm).unwrap();
+
+    if attr.uid == req.uid {
+        mode.user.write
+    } else if attr.gid == req.gid {
+        mode.group.write
+    } else {
+        mode.other.write
+    }
+}
+
+pub fn can_execute(node: &Node, req: &RequestInfo) -> bool {
+    let attr = node.attr();
+    let mode = Mode::new(attr.perm).unwrap();
+
+    if attr.uid == req.uid {
+        mode.user.execute
+    } else if attr.gid == req.gid {
+        mode.group.execute
+    } else {
+        mode.other.execute
     }
 }
