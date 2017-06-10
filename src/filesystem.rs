@@ -4,7 +4,7 @@ extern crate time;
 
 use std::collections::HashMap;
 use std::ffi::{OsString, OsStr};
-use std::path::{PathBuf, Path};
+use std::path::Path;
 use std::io::{self, Error, ErrorKind};
 
 use permissions::*;
@@ -67,10 +67,17 @@ impl Filesystem {
         }
     }
 
+    // Checks traversal (+x) of each segment of the path
+    #[allow(unused_variables)]
+    pub fn can_access<P: AsRef<Path>>(&self, path: P, req: &RequestInfo) -> bool {
+        unimplemented!();
+    }
+
     fn root_dir(&self) -> &FuseDir {
         self.fake_root.get("/").unwrap().as_dir()
     }
 
+    #[allow(dead_code)]
     fn root_dir_mut(&mut self) -> &mut FuseDir {
         self.fake_root.get_mut("/").unwrap().as_mut_dir()
     }
@@ -105,7 +112,7 @@ impl FuseDir {
         }
     }
 
-    fn get<P: AsRef<Path>>(&self, path: P) -> Option<&Node> {
+    pub fn get<P: AsRef<Path>>(&self, path: P) -> Option<&Node> {
         let path = path.as_ref();
 
         let mut iter = path.iter();
@@ -132,7 +139,7 @@ impl FuseDir {
         Some(node)
     }
 
-    fn get_mut<P: AsRef<Path>>(&mut self, path: P) -> Option<&mut Node> {
+    pub fn get_mut<P: AsRef<Path>>(&mut self, path: P) -> Option<&mut Node> {
         let path = path.as_ref();
 
         let mut iter = path.iter();
@@ -164,11 +171,11 @@ impl FuseDir {
     }
 
     fn mk_rw_file<P: AsRef<Path>>(&mut self, path: P, uid: u32, gid: u32) -> io::Result<()> {
-        self.insert_node(path, FuseFile::new(uid, gid, true).into())
+        self.insert_node(path, FuseFile::new_rw(uid, gid).into())
     }
 
     fn mk_ro_file<P: AsRef<Path>>(&mut self, path: P, uid: u32, gid: u32) -> io::Result<()> {
-        self.insert_node(path, FuseFile::new(uid, gid, false).into())
+        self.insert_node(path, FuseFile::new_ro(uid, gid).into())
     }
 
     fn insert_node<P: AsRef<Path>>(&mut self, path: P, node: Node) -> io::Result<()> {
@@ -219,12 +226,11 @@ impl FuseDir {
 
 pub struct FuseFile {
     attr: FileAttr,
-    uw: bool,
     data: Vec<u8>,
 }
 
 impl FuseFile {
-    pub fn new(uid: u32, gid: u32, uw: bool) -> Self {
+    pub fn new_rw(uid: u32, gid: u32) -> Self {
         let init_time = time::get_time();
 
         let attr = FileAttr {
@@ -245,9 +251,37 @@ impl FuseFile {
 
         FuseFile {
             attr: attr,
-            uw: uw,
             data: Vec::new(),
         }
+    }
+
+    pub fn new_ro(uid: u32, gid: u32) -> Self {
+        let init_time = time::get_time();
+
+        let attr = FileAttr {
+            size: 0,
+            blocks: 1,
+            atime: init_time,
+            mtime: init_time,
+            ctime: init_time,
+            crtime: init_time,
+            kind: FileType::RegularFile,
+            perm: 0o400,
+            nlink: 1,
+            uid: uid,
+            gid: gid,
+            rdev: 0,
+            flags: 0,
+        };
+
+        FuseFile {
+            attr: attr,
+            data: Vec::new(),
+        }
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.data
     }
 
     pub fn insert_data(&mut self, data: &[u8]) {
@@ -262,20 +296,34 @@ pub enum Node {
 
 
 impl Node {
-    fn as_dir(&self) -> &FuseDir {
+    pub fn attr(&self) -> &FileAttr {
+        match *self {
+            Node::D(ref dir) => &dir.attr,
+            Node::F(ref file) => &file.attr,
+        }
+    }
+
+    pub fn attr_mut(&mut self) -> &mut FileAttr {
+        match *self {
+            Node::D(ref mut dir) => &mut dir.attr,
+            Node::F(ref mut file) => &mut file.attr,
+        }
+    }
+
+    // Useful for when you _know_ something is a directory
+    pub fn as_dir(&self) -> &FuseDir {
         match self {
             &Node::D(ref dir) => dir,
             &Node::F(ref _file) => panic!(),
         }
     }
 
-    fn as_mut_dir(&mut self) -> &mut FuseDir {
+    pub fn as_mut_dir(&mut self) -> &mut FuseDir {
         match self {
             &mut Node::D(ref mut dir) => dir,
             &mut Node::F(ref mut _file) => panic!(),
         }
     }
-
 }
 
 impl From<FuseFile> for Node {
@@ -290,85 +338,36 @@ impl From<FuseDir> for Node {
     }
 }
 
-pub trait Attr {
-    fn attr(&self) -> &FileAttr;
-}
+pub fn can_read(uid: u32, gid: u32, mode: u16, req: &RequestInfo) -> bool {
+    let mode = Mode::new(mode).unwrap();
 
-impl Attr for Node {
-    fn attr(&self) -> &FileAttr {
-        match *self {
-            Node::F(ref file) => &file.attr,
-            Node::D(ref dir) => &dir.attr,
-        }
-    }
-}
-
-impl<'a> Attr for &'a Node {
-    fn attr(&self) -> &FileAttr {
-        match *self {
-            &Node::F(ref file) => &file.attr,
-            &Node::D(ref dir) => &dir.attr,
-        }
-    }
-}
-
-impl Attr for FuseFile {
-    fn attr(&self) -> &FileAttr {
-        &self.attr
-    }
-}
-
-impl<'a> Attr for &'a FuseFile {
-    fn attr(&self) -> &FileAttr {
-        &self.attr
-    }
-}
-
-impl Attr for FuseDir {
-    fn attr(&self) -> &FileAttr {
-        &self.attr
-    }
-}
-
-impl<'a> Attr for &'a FuseDir {
-    fn attr(&self) -> &FileAttr {
-        &self.attr
-    }
-}
-
-pub fn can_read<T: Attr>(file: &T, req: &RequestInfo) -> bool {
-    let attr = file.attr();
-    let mode = Mode::new(attr.perm).unwrap();
-
-    if attr.uid == req.uid {
+    if uid == req.uid {
         mode.user.read
-    } else if attr.gid == req.gid {
+    } else if gid == req.gid {
         mode.group.read
     } else {
         mode.other.read
     }
 }
 
-pub fn can_write<T: Attr>(file: &T, req: &RequestInfo) -> bool {
-    let attr = file.attr();
-    let mode = Mode::new(attr.perm).unwrap();
+pub fn can_write(uid: u32, gid: u32, mode: u16, req: &RequestInfo) -> bool {
+    let mode = Mode::new(mode).unwrap();
 
-    if attr.uid == req.uid {
+    if uid == req.uid {
         mode.user.write
-    } else if attr.gid == req.gid {
+    } else if gid == req.gid {
         mode.group.write
     } else {
         mode.other.write
     }
 }
 
-pub fn can_execute<T: Attr>(file: &T, req: &RequestInfo) -> bool {
-    let attr = file.attr();
-    let mode = Mode::new(attr.perm).unwrap();
+pub fn can_execute(uid: u32, gid: u32, mode: u16, req: &RequestInfo) -> bool {
+    let mode = Mode::new(mode).unwrap();
 
-    if attr.uid == req.uid {
+    if uid == req.uid {
         mode.user.execute
-    } else if attr.gid == req.gid {
+    } else if gid == req.gid {
         mode.group.execute
     } else {
         mode.other.execute
