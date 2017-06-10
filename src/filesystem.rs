@@ -276,12 +276,6 @@ impl Node {
         }
     }
 
-    pub fn attr(&self) -> &FileAttr {
-        match *self {
-            Node::F(ref file) => &file.attr,
-            Node::D(ref dir) => &dir.attr,
-        }
-    }
 }
 
 impl From<FuseFile> for Node {
@@ -296,8 +290,54 @@ impl From<FuseDir> for Node {
     }
 }
 
-pub fn can_read(node: &Node, req: &RequestInfo) -> bool {
-    let attr = node.attr();
+pub trait Attr {
+    fn attr(&self) -> &FileAttr;
+}
+
+impl Attr for Node {
+    fn attr(&self) -> &FileAttr {
+        match *self {
+            Node::F(ref file) => &file.attr,
+            Node::D(ref dir) => &dir.attr,
+        }
+    }
+}
+
+impl<'a> Attr for &'a Node {
+    fn attr(&self) -> &FileAttr {
+        match *self {
+            &Node::F(ref file) => &file.attr,
+            &Node::D(ref dir) => &dir.attr,
+        }
+    }
+}
+
+impl Attr for FuseFile {
+    fn attr(&self) -> &FileAttr {
+        &self.attr
+    }
+}
+
+impl<'a> Attr for &'a FuseFile {
+    fn attr(&self) -> &FileAttr {
+        &self.attr
+    }
+}
+
+impl Attr for FuseDir {
+    fn attr(&self) -> &FileAttr {
+        &self.attr
+    }
+}
+
+impl<'a> Attr for &'a FuseDir {
+    fn attr(&self) -> &FileAttr {
+        &self.attr
+    }
+}
+
+pub fn can_read<T: Attr>(file: &T, req: &RequestInfo) -> bool {
+    let attr = file.attr();
     let mode = Mode::new(attr.perm).unwrap();
 
     if attr.uid == req.uid {
@@ -309,8 +349,8 @@ pub fn can_read(node: &Node, req: &RequestInfo) -> bool {
     }
 }
 
-pub fn can_write(node: &Node, req: &RequestInfo) -> bool {
-    let attr = node.attr();
+pub fn can_write<T: Attr>(file: &T, req: &RequestInfo) -> bool {
+    let attr = file.attr();
     let mode = Mode::new(attr.perm).unwrap();
 
     if attr.uid == req.uid {
@@ -322,8 +362,8 @@ pub fn can_write(node: &Node, req: &RequestInfo) -> bool {
     }
 }
 
-pub fn can_execute(node: &Node, req: &RequestInfo) -> bool {
-    let attr = node.attr();
+pub fn can_execute<T: Attr>(file: &T, req: &RequestInfo) -> bool {
+    let attr = file.attr();
     let mode = Mode::new(attr.perm).unwrap();
 
     if attr.uid == req.uid {
