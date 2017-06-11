@@ -1,5 +1,5 @@
 use config::FsConfig;
-use libc::{ENOENT, EISDIR};
+use libc::{ENOENT, EISDIR, EACCES, ENOTSUP};
 use std::sync::{Arc, RwLock};
 use std::path::Path;
 use time::Timespec;
@@ -34,6 +34,10 @@ impl FilesystemMT for IrcFs {
         Ok(())
     }
 
+    // fn open(&self, _req: RequestInfo, _path: &Path, _flags: u32) -> ResultOpen {
+    //     Ok((0, 0))
+    // }
+
     fn read(&self, _req:RequestInfo, path:&Path, _fh:u64, offset:u64, size:u32) -> ResultData {
         let fs = self.fs.read().unwrap();
 
@@ -42,7 +46,15 @@ impl FilesystemMT for IrcFs {
                 Err(EISDIR)
             },
             Some(&Node::F(ref file)) => {
-                Ok(file.data()[offset as usize..size as usize].to_owned())
+                let data = file.data();
+                let end = {
+                    if (size as u64 + offset) as usize > data.len() {
+                        data.len()
+                    } else {
+                        size as usize
+                    }
+                };
+                Ok(data[offset as usize..end].to_owned())
             },
             None => {
                 Err(ENOENT)
@@ -50,9 +62,34 @@ impl FilesystemMT for IrcFs {
         }
     }
 
-    fn open(&self, _req: RequestInfo, _path: &Path, _flags: u32) -> ResultOpen {
-        Ok((0, 0))
+    fn write(&self, req: RequestInfo, path: &Path, _fh: u64, _offset: u64, data: Vec<u8>, _flags: u32) -> ResultWrite {
+        let mut fs = self.fs.write().unwrap();
+
+        match fs.get_mut(path) {
+            Some(&mut Node::D(ref mut _dir)) => {
+                Err(EISDIR)
+            },
+            Some(&mut Node::F(ref mut file)) => {
+                let uid = file.attr.uid;
+                let gid = file.attr.gid;
+                let mode = file.attr.perm;
+
+                if can_write(uid, gid, mode, &req) {
+                    file.insert_data(&data);
+                    Ok(data.len() as u32)
+                } else {
+                    // Should probably be changed to EACCES if/when permissions are implemented
+                    // But, currently, this will just be the "out" files, and ENOTSUP seems
+                    // more logical
+                    Err(ENOTSUP)
+                }
+            },
+            None => {
+                Err(ENOENT)
+            },
+        }
     }
+
 
     fn opendir(&self, _req: RequestInfo, path: &Path, _flags: u32) -> ResultOpen {
         let fs = self.fs.read().unwrap();

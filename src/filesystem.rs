@@ -225,7 +225,7 @@ impl FuseDir {
 }
 
 pub struct FuseFile {
-    attr: FileAttr,
+    pub attr: FileAttr,
     data: Vec<u8>,
 }
 
