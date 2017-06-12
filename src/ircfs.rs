@@ -1,5 +1,5 @@
 use config::FsConfig;
-use libc::{ENOENT, EISDIR, EACCES, ENOTSUP};
+use libc::{ENOENT, EISDIR, ENOTSUP};
 use std::sync::{Arc, RwLock};
 use std::path::Path;
 use time::Timespec;
@@ -33,10 +33,6 @@ impl FilesystemMT for IrcFs {
 
         Ok(())
     }
-
-    // fn open(&self, _req: RequestInfo, _path: &Path, _flags: u32) -> ResultOpen {
-    //     Ok((0, 0))
-    // }
 
     fn read(&self, _req:RequestInfo, path:&Path, _fh:u64, offset:u64, size:u32) -> ResultData {
         let fs = self.fs.read().unwrap();
@@ -90,7 +86,6 @@ impl FilesystemMT for IrcFs {
         }
     }
 
-
     fn opendir(&self, _req: RequestInfo, path: &Path, _flags: u32) -> ResultOpen {
         let fs = self.fs.read().unwrap();
 
@@ -126,10 +121,5 @@ impl FilesystemMT for IrcFs {
             },
             None => Err(ENOENT),
         }
-    }
-
-    // Allows directory traversal (I think)
-    fn access(&self, _req: RequestInfo, _path: &Path, _mask: u32) -> ResultEmpty {
-        Ok(())
     }
 }

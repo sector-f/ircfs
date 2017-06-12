@@ -4,7 +4,6 @@ version = "0.1.0"
 dependencies = [
  "clap 2.24.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "daemonize 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "fuse 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fuse_mt 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "irc 0.11.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.23 (registry+https://github.com/rust-lang/crates.io-index)",

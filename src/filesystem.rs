@@ -286,6 +286,7 @@ impl FuseFile {
 
     pub fn insert_data(&mut self, data: &[u8]) {
         self.data.extend_from_slice(data);
+        self.attr.size = self.data.len() as u64;
     }
 }
 

@@ -1,7 +1,6 @@
 extern crate serde;
 #[macro_use] extern crate serde_derive;
 
-extern crate fuse;
 extern crate fuse_mt;
 extern crate time;
 extern crate libc;
