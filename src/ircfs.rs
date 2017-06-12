@@ -58,6 +58,30 @@ impl FilesystemMT for IrcFs {
         }
     }
 
+    fn truncate(&self,req:RequestInfo,path:&Path,_fh:Option<u64>,_size:u64) -> ResultEmpty {
+        let fs = self.fs.read().unwrap();
+
+        match fs.get(path) {
+            Some(&Node::D(ref dir)) => {
+                Err(EISDIR)
+            },
+            Some(&Node::F(ref file)) => {
+                let uid = file.attr.uid;
+                let gid = file.attr.gid;
+                let mode = file.attr.perm;
+
+                if can_write(uid, gid, mode, &req) {
+                    Ok(())
+                } else {
+                    Err(ENOTSUP)
+                }
+            },
+            None => {
+                Err(ENOENT)
+            },
+        }
+    }
+
     fn write(&self, req: RequestInfo, path: &Path, _fh: u64, _offset: u64, data: Vec<u8>, _flags: u32) -> ResultWrite {
         let mut fs = self.fs.write().unwrap();
 
