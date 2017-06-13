@@ -286,7 +286,12 @@ impl FuseFile {
 
     pub fn insert_data(&mut self, data: &[u8]) {
         self.data.extend_from_slice(data);
+        let current_time = time::get_time();
         self.attr.size = self.data.len() as u64;
+        self.attr.atime = current_time;
+        self.attr.mtime = current_time;
+        self.attr.ctime = current_time;
+        self.attr.crtime = current_time;
     }
 }
 
