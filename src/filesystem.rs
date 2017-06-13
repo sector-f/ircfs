@@ -4,7 +4,7 @@ extern crate time;
 
 use std::collections::HashMap;
 use std::ffi::{OsString, OsStr};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::io::{self, Error, ErrorKind};
 
 use permissions::*;
@@ -35,6 +35,36 @@ impl Filesystem {
         let uid = self.root_dir().attr.uid;
         let gid = self.root_dir().attr.gid;
         self.fake_root.mk_dir(path, uid, gid)
+    }
+
+    pub fn mk_parents<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
+        let full_path = path.as_ref();
+        let mut partial_path = PathBuf::new();
+
+        if ! full_path.is_absolute() {
+            return Err(Error::from(ErrorKind::InvalidInput));
+        }
+
+        let mut iter = full_path.iter();
+
+        while let None = self.fake_root.get(&full_path) {
+            let next = iter.next().unwrap();
+            partial_path = partial_path.join(&next);
+
+            if let Err(e) = self.mk_dir(&partial_path) {
+                match e.kind() {
+                    ErrorKind::Other => {
+                        return Err(e);
+                    },
+                    ErrorKind::InvalidInput => {
+                        return Err(e);
+                    },
+                    _ => {},
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub fn mk_ro_file<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
