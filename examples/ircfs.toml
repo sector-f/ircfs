@@ -1,15 +1,15 @@
 [global]
-nickname = "ircfs-test"
+nickname = "ircfs"
+username = "ircfs"
 
 [[server]]
-nickname = "ircfs"
 server = "irc.rizon.net"
 alias = "rizon"
 autoconnect = true
-autojoin = ["#ircfs", "#cosarara"]
+channels = ["#ircfs", "#cosarara"]
 
 [[server]]
 server = "chat.freenode.net"
-port = 6697
-ssl = true
-autojoin = ["#ircfs"]
+channels = ["#ircfs"]
+# port = 6697
+# ssl = true

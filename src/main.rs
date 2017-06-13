@@ -69,7 +69,7 @@ fn main() {
         let mut current_directory = match current_dir() {
             Ok(dir) => dir,
             Err(_) => {
-                println!("Failed to determine current directory to form absolute path to mountpoint; try again with an absolute path");
+                println!("Failed to determine current directory; try again with an absolute path");
                 exit(1);
             },
         };

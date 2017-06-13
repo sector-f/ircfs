@@ -1,22 +1,54 @@
-use config::FsConfig;
 use libc::{ENOENT, EISDIR, ENOTSUP};
-use std::sync::{Arc, RwLock};
-use std::path::Path;
 use time::Timespec;
-use std::ffi::OsString;
+use irc::client::prelude::*;
 
+use std::sync::{Arc, RwLock, Mutex, mpsc};
+use std::path::{Path, PathBuf};
+use std::ffi::OsString;
+use std::thread::{self, sleep, JoinHandle};
+use std::time::Duration;
+
+use config::{FsConfig, convert_config};
 use fuse_mt::*;
 use filesystem::*;
 
 pub struct IrcFs {
     fs: Arc<RwLock<Filesystem>>,
+    config: FsConfig,
 }
 
 impl IrcFs {
     pub fn new(config: &FsConfig, uid: u32, gid: u32) -> Self {
         IrcFs {
             fs: Arc::new(RwLock::new(Filesystem::new(uid, gid))),
+            config: config.clone(),
         }
+    }
+
+    #[allow(unused_must_use)]
+    fn control_init(&self) -> mpsc::Sender<ControlCommand> {
+        let (tx, rx) = mpsc::channel();
+        let mut fs = self.fs.clone();
+
+        thread::spawn(move || {
+            let mut fs = fs.write().unwrap();
+            for message in rx.iter() {
+                match message {
+                    ControlCommand::Message(ref path, ref data) => {
+                        if let Some(&mut Node::F(ref mut file)) = fs.get_mut(path) {
+                            file.insert_data(&data);
+                        }
+                    },
+                    ControlCommand::CreateDir(ref path) => {
+                        fs.mk_parents(&path);
+                        fs.mk_ro_file(&path.join("out"));
+                        fs.mk_rw_file(&path.join("in"));
+                    }
+                }
+            }
+        });
+
+        tx
     }
 }
 
@@ -27,9 +59,63 @@ impl FilesystemMT for IrcFs {
         fs.mk_rw_file("/in").unwrap();
         fs.mk_ro_file("/out").unwrap();
 
-        fs.mk_dir("/foo").unwrap();
-        fs.mk_rw_file("/foo/in").unwrap();
-        fs.mk_ro_file("/foo/out").unwrap();
+        let tx = self.control_init();
+
+        // tx.send(ControlCommand::CreateDir(PathBuf::from("/rizon")));
+        // tx.send(ControlCommand::CreateDir(PathBuf::from("/rizon/foo")));
+        // tx.send(ControlCommand::CreateDir(PathBuf::from("/freenode")));
+        // tx.send(ControlCommand::CreateDir(PathBuf::from("/freenode/bar")));
+
+        // for srv_conf in convert_config(&self.config).into_iter() {
+        //     let tx = tx.clone();
+        //     thread::spawn(move || {
+        //         if let Ok(server) = IrcServer::from_config(srv_conf.clone()) {
+        //             for msg_res in server.iter() {
+        //                 if let Ok(msg) = msg_res {
+        //                     tx.send(
+        //                         ControlCommand::Message(
+        //                             PathBuf::from("/out"),
+        //                             msg.to_string().into_bytes(),
+        //                         )
+        //                     );
+        //                 }
+        //             }
+        //         }
+        //     });
+        // }
+
+        for srv_conf in convert_config(&self.config).into_iter() {
+            let tx = tx.clone();
+            let srv_conf = srv_conf.clone();
+
+            thread::spawn(move || {
+                if let Ok(server) = IrcServer::from_config(srv_conf.clone()) {
+                    server.identify();
+                    let root = Path::new("/");
+                    let server_path = root.join(srv_conf.server.unwrap());
+
+                    tx.send(ControlCommand::CreateDir(server_path.clone()));
+
+                    if let Some(channels) = server.list_channels() {
+                        for channel in channels {
+                            let chan_path = server_path.clone().join(channel);
+                            tx.send(ControlCommand::CreateDir(chan_path));
+                        }
+                    }
+
+                    for msg_res in server.iter() {
+                        if let Ok(msg) = msg_res {
+                            tx.send(
+                                ControlCommand::Message(
+                                    server_path.clone().join("out"),
+                                    msg.to_string().into_bytes(),
+                                )
+                            );
+                        }
+                    }
+                }
+            });
+        }
 
         Ok(())
     }
@@ -62,7 +148,7 @@ impl FilesystemMT for IrcFs {
         let fs = self.fs.read().unwrap();
 
         match fs.get(path) {
-            Some(&Node::D(ref dir)) => {
+            Some(&Node::D(ref _dir)) => {
                 Err(EISDIR)
             },
             Some(&Node::F(ref file)) => {
@@ -146,4 +232,10 @@ impl FilesystemMT for IrcFs {
             None => Err(ENOENT),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+enum ControlCommand {
+    CreateDir(PathBuf),
+    Message(PathBuf, Vec<u8>),
 }

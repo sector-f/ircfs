@@ -8,7 +8,7 @@ use std::collections::HashMap;
 pub struct FsConfig {
     pub global: GlobalConfig,
     #[serde(rename = "server")]
-    servers: Vec<ServerConfig>,
+    pub servers: Vec<ServerConfig>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
