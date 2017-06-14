@@ -31,8 +31,8 @@ impl IrcFs {
         let mut fs = self.fs.clone();
 
         thread::spawn(move || {
-            let mut fs = fs.write().unwrap();
             for message in rx.iter() {
+                let mut fs = fs.write().unwrap();
                 match message {
                     ControlCommand::Message(ref path, ref data) => {
                         if let Some(&mut Node::F(ref mut file)) = fs.get_mut(path) {
@@ -61,29 +61,6 @@ impl FilesystemMT for IrcFs {
 
         let tx = self.control_init();
 
-        // tx.send(ControlCommand::CreateDir(PathBuf::from("/rizon")));
-        // tx.send(ControlCommand::CreateDir(PathBuf::from("/rizon/foo")));
-        // tx.send(ControlCommand::CreateDir(PathBuf::from("/freenode")));
-        // tx.send(ControlCommand::CreateDir(PathBuf::from("/freenode/bar")));
-
-        // for srv_conf in convert_config(&self.config).into_iter() {
-        //     let tx = tx.clone();
-        //     thread::spawn(move || {
-        //         if let Ok(server) = IrcServer::from_config(srv_conf.clone()) {
-        //             for msg_res in server.iter() {
-        //                 if let Ok(msg) = msg_res {
-        //                     tx.send(
-        //                         ControlCommand::Message(
-        //                             PathBuf::from("/out"),
-        //                             msg.to_string().into_bytes(),
-        //                         )
-        //                     );
-        //                 }
-        //             }
-        //         }
-        //     });
-        // }
-
         for srv_conf in convert_config(&self.config).into_iter() {
             let tx = tx.clone();
             let srv_conf = srv_conf.clone();
@@ -105,12 +82,20 @@ impl FilesystemMT for IrcFs {
 
                     for msg_res in server.iter() {
                         if let Ok(msg) = msg_res {
-                            tx.send(
-                                ControlCommand::Message(
-                                    server_path.clone().join("out"),
-                                    msg.to_string().into_bytes(),
-                                )
-                            );
+                            match msg.command {
+                                Command::PRIVMSG(target, message) => {
+                                    let username = msg.prefix.unwrap();
+                                    let chan_path = server_path.join(target);
+                                    tx.send(ControlCommand::CreateDir(chan_path.clone()));
+                                    tx.send(
+                                        ControlCommand::Message(
+                                            chan_path.clone().join("out"),
+                                            format!("{} {}\n", username, message).into_bytes(),
+                                        )
+                                    );
+                                },
+                                _ => {},
+                            }
                         }
                     }
                 }
