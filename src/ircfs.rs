@@ -15,21 +15,20 @@ use filesystem::*;
 pub struct IrcFs {
     fs: Arc<RwLock<Filesystem>>,
     config: FsConfig,
+    tx: Mutex<mpsc::Sender<ControlCommand>>,
 }
 
 impl IrcFs {
     pub fn new(config: &FsConfig, uid: u32, gid: u32) -> Self {
-        IrcFs {
+        let (tx, rx) = mpsc::channel();
+
+        let filesystem = IrcFs {
             fs: Arc::new(RwLock::new(Filesystem::new(uid, gid))),
             config: config.clone(),
-        }
-    }
+            tx: Mutex::new(tx.clone()),
+        };
 
-    #[allow(unused_must_use)]
-    fn control_init(&self) -> mpsc::Sender<ControlCommand> {
-        let (tx, rx) = mpsc::channel();
-        let mut fs = self.fs.clone();
-
+        let fs = filesystem.fs.clone();
         thread::spawn(move || {
             for message in rx.iter() {
                 let mut fs = fs.write().unwrap();
@@ -48,7 +47,45 @@ impl IrcFs {
             }
         });
 
-        tx
+        return filesystem;
+    }
+
+    fn handle_server(&self, srv_conf: Config) {
+        let tx = self.tx.lock().unwrap();
+        let tx = tx.clone();
+
+        thread::spawn(move || {
+            if let Ok(server) = IrcServer::from_config(srv_conf.clone()) {
+                server.identify();
+                let root = Path::new("/");
+                let server_path = root.join(srv_conf.server.unwrap());
+
+                tx.send(ControlCommand::CreateDir(server_path.clone()));
+
+                for msg_res in server.iter() {
+                    if let Ok(msg) = msg_res {
+                        match msg.command {
+                            Command::PRIVMSG(target, message) => {
+                                let username = msg.prefix.unwrap();
+                                let username = username.split('!').nth(0).unwrap();
+                                let chan_path = server_path.join(target);
+                                tx.send(ControlCommand::CreateDir(chan_path.clone()));
+                                tx.send(
+                                    ControlCommand::Message(
+                                        chan_path.clone().join("out"),
+                                        format!("{}: {}\n",
+                                            username,
+                                            message,
+                                        ).into_bytes(),
+                                    )
+                                );
+                            },
+                            _ => {},
+                        }
+                    }
+                }
+            }
+        });
     }
 }
 
@@ -59,47 +96,9 @@ impl FilesystemMT for IrcFs {
         fs.mk_rw_file("/in").unwrap();
         fs.mk_ro_file("/out").unwrap();
 
-        let tx = self.control_init();
 
         for srv_conf in convert_config(&self.config).into_iter() {
-            let tx = tx.clone();
-            let srv_conf = srv_conf.clone();
-
-            thread::spawn(move || {
-                if let Ok(server) = IrcServer::from_config(srv_conf.clone()) {
-                    server.identify();
-                    let root = Path::new("/");
-                    let server_path = root.join(srv_conf.server.unwrap());
-
-                    tx.send(ControlCommand::CreateDir(server_path.clone()));
-
-                    if let Some(channels) = server.list_channels() {
-                        for channel in channels {
-                            let chan_path = server_path.clone().join(channel);
-                            tx.send(ControlCommand::CreateDir(chan_path));
-                        }
-                    }
-
-                    for msg_res in server.iter() {
-                        if let Ok(msg) = msg_res {
-                            match msg.command {
-                                Command::PRIVMSG(target, message) => {
-                                    let username = msg.prefix.unwrap();
-                                    let chan_path = server_path.join(target);
-                                    tx.send(ControlCommand::CreateDir(chan_path.clone()));
-                                    tx.send(
-                                        ControlCommand::Message(
-                                            chan_path.clone().join("out"),
-                                            format!("{} {}\n", username, message).into_bytes(),
-                                        )
-                                    );
-                                },
-                                _ => {},
-                            }
-                        }
-                    }
-                }
-            });
+            self.handle_server(srv_conf);
         }
 
         Ok(())
