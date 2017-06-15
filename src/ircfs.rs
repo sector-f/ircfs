@@ -1,31 +1,40 @@
 use libc::{ENOENT, EISDIR, ENOTSUP};
-use time::Timespec;
+use time::{self, Timespec};
 use irc::client::prelude::*;
 
-use std::sync::{Arc, RwLock, Mutex, mpsc};
+use std::sync::{Arc, RwLock, Mutex};
+use std::sync::mpsc::{channel, Sender, Receiver};
 use std::path::{Path, PathBuf};
 use std::ffi::OsString;
+use std::collections::HashMap;
 use std::thread::{self, sleep, JoinHandle};
 use std::time::Duration;
+use std::io;
 
-use config::{FsConfig, convert_config};
 use fuse_mt::*;
 use filesystem::*;
 
+// The server needs to send messages to the filesystem.
+// Therefore, the ServerController must have access to a Sender that is read by the IrcFs.
+//
+// The server must receive messages from the filesystem.
+// Therefore, the ServerController must have access to a receiver.
+
 pub struct IrcFs {
     fs: Arc<RwLock<Filesystem>>,
-    config: FsConfig,
-    tx: Mutex<mpsc::Sender<ControlCommand>>,
+    config: Config,
+    tx_to_server: Mutex<Sender<Message>>,
 }
 
 impl IrcFs {
-    pub fn new(config: &FsConfig, uid: u32, gid: u32) -> Self {
-        let (tx, rx) = mpsc::channel();
+    pub fn new(config: &Config, uid: u32, gid: u32) -> io::Result<Self> {
+        let (tx, rx) = channel();
+        let tx_to_server = init_server(config.clone(), tx)?;
 
         let filesystem = IrcFs {
             fs: Arc::new(RwLock::new(Filesystem::new(uid, gid))),
             config: config.clone(),
-            tx: Mutex::new(tx.clone()),
+            tx_to_server: Mutex::new(tx_to_server),
         };
 
         let fs = filesystem.fs.clone();
@@ -33,12 +42,12 @@ impl IrcFs {
             for message in rx.iter() {
                 let mut fs = fs.write().unwrap();
                 match message {
-                    ControlCommand::Message(ref path, ref data) => {
+                    FsControl::Message(ref path, ref data) => {
                         if let Some(&mut Node::F(ref mut file)) = fs.get_mut(path) {
                             file.insert_data(&data);
                         }
                     },
-                    ControlCommand::CreateDir(ref path) => {
+                    FsControl::CreateDir(ref path) => {
                         fs.mk_parents(&path);
                         fs.mk_ro_file(&path.join("out"));
                         fs.mk_rw_file(&path.join("in"));
@@ -47,46 +56,61 @@ impl IrcFs {
             }
         });
 
-        return filesystem;
+        return Ok(filesystem);
     }
+}
 
-    fn handle_server(&self, srv_conf: Config) {
-        let tx = self.tx.lock().unwrap();
-        let tx = tx.clone();
+fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender<Message>> {
+    let (tx, rx) = channel::<Message>();
 
-        thread::spawn(move || {
-            if let Ok(server) = IrcServer::from_config(srv_conf.clone()) {
-                server.identify();
-                let root = Path::new("/");
-                let server_path = root.join(srv_conf.server.unwrap());
+    let srv = IrcServer::from_config(config.clone())?;
 
-                tx.send(ControlCommand::CreateDir(server_path.clone()));
+    // This thread iterates over messages from the server
+    // and sends the necessary actions to the filesystem, e.g. writing to files
+    let server = srv.clone();
+    thread::spawn(move || {
+        server.identify();
+        let root = Path::new("/");
+        let server_path = root.join(config.server.unwrap());
 
-                for msg_res in server.iter() {
-                    if let Ok(msg) = msg_res {
-                        match msg.command {
-                            Command::PRIVMSG(target, message) => {
-                                let username = msg.prefix.unwrap();
-                                let username = username.split('!').nth(0).unwrap();
-                                let chan_path = server_path.join(target);
-                                tx.send(ControlCommand::CreateDir(chan_path.clone()));
-                                tx.send(
-                                    ControlCommand::Message(
-                                        chan_path.clone().join("out"),
-                                        format!("{}: {}\n",
-                                            username,
-                                            message,
-                                        ).into_bytes(),
-                                    )
-                                );
-                            },
-                            _ => {},
-                        }
-                    }
+        tx_to_fs.send(FsControl::CreateDir(server_path.clone()));
+
+        for msg_res in server.iter() {
+            if let Ok(msg) = msg_res {
+                match msg.command {
+                    Command::PRIVMSG(target, message) => {
+                        let time = time::now();
+                        let username = msg.prefix.unwrap();
+                        let username = username.split('!').nth(0).unwrap();
+                        let chan_path = server_path.join(target);
+                        tx_to_fs.send(FsControl::CreateDir(chan_path.clone()));
+                        tx_to_fs.send(
+                            FsControl::Message(
+                                chan_path.clone().join("out"),
+                                format!("{} {}: {}\n",
+                                    time.strftime("%T").unwrap(),
+                                    username,
+                                    message,
+                                ).into_bytes(),
+                            )
+                        );
+                    },
+                    _ => {},
                 }
             }
-        });
-    }
+        }
+    });
+
+    // This thread receives messages from the filesystem and performs
+    // the necessary actions, such as sending a PRIVMSG to the server
+    let server = srv.clone();
+    thread::spawn(move || {
+        for message in rx.iter() {
+            server.send(message);
+        }
+    });
+
+    Ok(tx)
 }
 
 impl FilesystemMT for IrcFs {
@@ -97,9 +121,7 @@ impl FilesystemMT for IrcFs {
         fs.mk_ro_file("/out").unwrap();
 
 
-        for srv_conf in convert_config(&self.config).into_iter() {
-            self.handle_server(srv_conf);
-        }
+        // self.handle_server(self.config.clone());
 
         Ok(())
     }
@@ -219,7 +241,7 @@ impl FilesystemMT for IrcFs {
 }
 
 #[derive(Debug, Clone)]
-enum ControlCommand {
+enum FsControl {
     CreateDir(PathBuf),
     Message(PathBuf, Vec<u8>),
 }
