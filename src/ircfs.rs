@@ -5,7 +5,7 @@ use irc::client::prelude::*;
 use std::sync::{Arc, RwLock, Mutex};
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::path::{Path, PathBuf};
-use std::ffi::OsString;
+use std::ffi::{OsString, OsStr};
 use std::collections::HashMap;
 use std::thread::{self, sleep, JoinHandle};
 use std::time::Duration;
@@ -120,10 +120,10 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender
 
 impl FilesystemMT for IrcFs {
     fn init(&self, _req: RequestInfo) -> ResultEmpty {
-        let mut fs = self.fs.write().unwrap();
+        // let mut fs = self.fs.write().unwrap();
 
-        fs.mk_rw_file("/in").unwrap();
-        fs.mk_ro_file("/out").unwrap();
+        // fs.mk_rw_file("/in").unwrap();
+        // fs.mk_ro_file("/out").unwrap();
 
         Ok(())
     }
@@ -187,10 +187,33 @@ impl FilesystemMT for IrcFs {
                 let uid = file.attr.uid;
                 let gid = file.attr.gid;
                 let mode = file.attr.perm;
+                let len = data.len();
 
                 if can_write(uid, gid, mode, &req) {
                     file.insert_data(&data);
-                    Ok(data.len() as u32)
+
+                    if let Ok(string) = String::from_utf8(data) {
+                        let tx = self.tx_to_server.lock().unwrap();
+                        if string.len() > 3 {
+                            if &string[0..3] == "/j " {
+                                let channel = string[3..].to_owned();
+
+                                let channel_path = Path::new("/").join(channel.clone());
+                                let mut fs = self.fs.write().unwrap();
+                                fs.mk_parents(&channel_path);
+                                fs.mk_rw_file(&channel_path.join("in"));
+                                fs.mk_ro_file(&channel_path.join("out"));
+
+                                tx.send(Message::from(Command::JOIN(channel, None, None)));
+                                return Ok(len as u32);
+                            }
+                        }
+                        let channel_dir = PathBuf::from(&path).parent().unwrap().to_owned();
+                        let channel = channel_dir.file_name().unwrap();
+                        tx.send(Message::from(Command::PRIVMSG(channel.to_string_lossy().into_owned(), string)));
+                    }
+
+                    Ok(len as u32)
                 } else {
                     // Should probably be changed to EACCES if/when permissions are implemented
                     // But, currently, this will just be the "out" files, and ENOTSUP seems

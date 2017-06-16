@@ -129,9 +129,6 @@ fn main() {
         }
     };
 
-    let server = matches.value_of_os("server")
-        .unwrap().to_string_lossy().into_owned();
-
     let nickname = matches
         .value_of_os("nickname").map(|s| s.to_owned())
         .or(var_os("USER")).unwrap_or(OsString::from(""));
@@ -141,6 +138,8 @@ fn main() {
         let _ = writeln!(stderr(), "nickname may not be empty");
         exit(1);
     }
+
+    config.nickname = Some(nickname);
 
     if let None = config.nickname {
         let _ = writeln!(stderr(), "nickname may not be unspecified");
@@ -152,8 +151,10 @@ fn main() {
         .or(var_os("USER")).unwrap_or(OsString::from(""));
     let realname = realname.to_string_lossy().into_owned();
 
-    config.server = Some(server);
-    config.nickname = Some(nickname);
+    if let Some(server) = matches.value_of_os("server") {
+        let server = server.to_string_lossy().into_owned();
+        config.server = Some(server);
+    }
     config.realname = Some(realname);
     if let Some(port) = matches.value_of_os("port") {
         let port = port.to_string_lossy().into_owned();
