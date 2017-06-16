@@ -17,6 +17,7 @@ use filesystem::*;
 pub struct IrcFs {
     fs: Arc<RwLock<Filesystem>>,
     config: Config,
+    tx_to_fs: Mutex<Sender<FsControl>>,
     tx_to_server: Mutex<Sender<Message>>,
 }
 
@@ -28,6 +29,7 @@ impl IrcFs {
         let filesystem = IrcFs {
             fs: Arc::new(RwLock::new(Filesystem::new(uid, gid))),
             config: config.clone(),
+            tx_to_fs: Mutex::new(tx_to_fs),
             tx_to_server: Mutex::new(tx_to_server),
         };
 
@@ -73,6 +75,7 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender
     // This thread iterates over messages from the server
     // and sends the necessary actions to the filesystem, e.g. writing to files
     let server = srv.clone();
+    let tx_to_fs_2 = tx_to_fs.clone();
     thread::spawn(move || {
         server.identify();
         let root = Path::new("/");
@@ -88,8 +91,8 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender
                         } else {
                             root.join(target)
                         };
-                        tx_to_fs.send(FsControl::CreateDir(chan_path.clone()));
-                        tx_to_fs.send(
+                        tx_to_fs_2.send(FsControl::CreateDir(chan_path.clone()));
+                        tx_to_fs_2.send(
                             FsControl::Message(
                                 chan_path.clone().join("out"),
                                 format!("{} {}: {}\n",
@@ -109,8 +112,26 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender
     // This thread receives messages from the filesystem and performs
     // the necessary actions, such as sending a PRIVMSG to the server
     let server = srv.clone();
+    let tx_to_fs_3 = tx_to_fs.clone();
     thread::spawn(move || {
         for message in rx.iter() {
+            match message.command.clone() {
+                Command::PRIVMSG(channel, string) => {
+                    let time = time::now();
+                    let channel_path = Path::new("/").join(channel);
+                    tx_to_fs_3.send(
+                        FsControl::Message(
+                            channel_path.clone().join("out"),
+                            format!("{} {}: {}",
+                                time.strftime("%T").unwrap(),
+                                server.current_nickname(),
+                                string,
+                            ).into_bytes(),
+                        )
+                    );
+                },
+                _ => {},
+            }
             server.send(message);
         }
     });
@@ -120,10 +141,10 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender
 
 impl FilesystemMT for IrcFs {
     fn init(&self, _req: RequestInfo) -> ResultEmpty {
-        // let mut fs = self.fs.write().unwrap();
+        let mut fs = self.fs.write().unwrap();
 
-        // fs.mk_rw_file("/in").unwrap();
-        // fs.mk_ro_file("/out").unwrap();
+        fs.mk_rw_file("/in").unwrap();
+        fs.mk_ro_file("/out").unwrap();
 
         Ok(())
     }
@@ -196,21 +217,22 @@ impl FilesystemMT for IrcFs {
                         let tx = self.tx_to_server.lock().unwrap();
                         if string.len() > 3 {
                             if &string[0..3] == "/j " {
-                                let channel = string[3..].to_owned();
+                                let channel = string[3..].trim().to_owned();
 
                                 let channel_path = Path::new("/").join(channel.clone());
-                                let mut fs = self.fs.write().unwrap();
-                                fs.mk_parents(&channel_path);
-                                fs.mk_rw_file(&channel_path.join("in"));
-                                fs.mk_ro_file(&channel_path.join("out"));
+                                let tx_to_fs = self.tx_to_fs.lock().unwrap();
+                                tx_to_fs.send(FsControl::CreateDir(channel_path.clone()));
 
                                 tx.send(Message::from(Command::JOIN(channel, None, None)));
                                 return Ok(len as u32);
                             }
                         }
-                        let channel_dir = PathBuf::from(&path).parent().unwrap().to_owned();
-                        let channel = channel_dir.file_name().unwrap();
-                        tx.send(Message::from(Command::PRIVMSG(channel.to_string_lossy().into_owned(), string)));
+                        if path != Path::new("/in") {
+                            let channel_dir = PathBuf::from(&path).parent().unwrap().to_owned();
+                            let channel = channel_dir.file_name().unwrap();
+                            let time = time::now();
+                            tx.send(Message::from(Command::PRIVMSG(channel.to_string_lossy().into_owned(), string)));
+                        }
                     }
 
                     Ok(len as u32)
