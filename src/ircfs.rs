@@ -81,13 +81,14 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender
         let root = Path::new("/");
         for msg_res in server.iter() {
             if let Ok(msg) = msg_res {
+                let time = time::now();
                 match msg.command {
                     Command::PRIVMSG(target, message) => {
-                        let time = time::now();
-                        let username = msg.prefix.unwrap();
-                        let username = username.split('!').nth(0).unwrap();
+                        let username =
+                            msg.prefix.map(|s| String::from(s.split('!').nth(0).unwrap()))
+                            .unwrap_or(server.current_nickname().to_owned());
                         let chan_path = if &target == server.current_nickname() {
-                            root.join(username)
+                            root.join(&username)
                         } else {
                             root.join(target)
                         };
@@ -97,8 +98,8 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender
                                 chan_path.clone().join("out"),
                                 format!("{} {}: {}\n",
                                     time.strftime("%T").unwrap(),
-                                    username,
-                                    message,
+                                    &username,
+                                    message.trim(),
                                 ).into_bytes(),
                             )
                         );
@@ -122,10 +123,10 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender
                     tx_to_fs_3.send(
                         FsControl::Message(
                             channel_path.clone().join("out"),
-                            format!("{} {}: {}",
+                            format!("{} {}: {}\n",
                                 time.strftime("%T").unwrap(),
                                 server.current_nickname(),
-                                string,
+                                string.trim(),
                             ).into_bytes(),
                         )
                     );
