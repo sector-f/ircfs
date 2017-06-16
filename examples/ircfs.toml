@@ -1,15 +1,9 @@
-[global]
 nickname = "ircfs"
-username = "ircfs"
-
-[[server]]
 server = "irc.rizon.net"
-alias = "rizon"
-autoconnect = true
 channels = ["#ircfs", "#cosarara"]
 
-[[server]]
-server = "chat.freenode.net"
-channels = ["#ircfs"]
+# [[server]]
+# server = "chat.freenode.net"
+# channels = ["#ircfs"]
 # port = 6697
 # ssl = true

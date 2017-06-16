@@ -14,12 +14,6 @@ use std::io;
 use fuse_mt::*;
 use filesystem::*;
 
-// The server needs to send messages to the filesystem.
-// Therefore, the ServerController must have access to a Sender that is read by the IrcFs.
-//
-// The server must receive messages from the filesystem.
-// Therefore, the ServerController must have access to a receiver.
-
 pub struct IrcFs {
     fs: Arc<RwLock<Filesystem>>,
     config: Config,
@@ -28,8 +22,8 @@ pub struct IrcFs {
 
 impl IrcFs {
     pub fn new(config: &Config, uid: u32, gid: u32) -> io::Result<Self> {
-        let (tx, rx) = channel();
-        let tx_to_server = init_server(config.clone(), tx)?;
+        let (tx_to_fs, rx_from_server) = channel();
+        let tx_to_server = init_server(config.clone(), tx_to_fs.clone())?;
 
         let filesystem = IrcFs {
             fs: Arc::new(RwLock::new(Filesystem::new(uid, gid))),
@@ -37,9 +31,20 @@ impl IrcFs {
             tx_to_server: Mutex::new(tx_to_server),
         };
 
+        if let Some(ref channels) = config.channels {
+            let mut fs = filesystem.fs.clone();
+            let mut fs = fs.write().unwrap();
+            for channel in channels {
+                let path = Path::new("/").join(channel);
+                fs.mk_parents(&path);
+                fs.mk_ro_file(&path.join("out"));
+                fs.mk_rw_file(&path.join("in"));
+            }
+        }
+
         let fs = filesystem.fs.clone();
         thread::spawn(move || {
-            for message in rx.iter() {
+            for message in rx_from_server.iter() {
                 let mut fs = fs.write().unwrap();
                 match message {
                     FsControl::Message(ref path, ref data) => {
@@ -71,10 +76,6 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender
     thread::spawn(move || {
         server.identify();
         let root = Path::new("/");
-        let server_path = root.join(config.server.unwrap());
-
-        tx_to_fs.send(FsControl::CreateDir(server_path.clone()));
-
         for msg_res in server.iter() {
             if let Ok(msg) = msg_res {
                 match msg.command {
@@ -82,7 +83,11 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender
                         let time = time::now();
                         let username = msg.prefix.unwrap();
                         let username = username.split('!').nth(0).unwrap();
-                        let chan_path = server_path.join(target);
+                        let chan_path = if &target == server.current_nickname() {
+                            root.join(username)
+                        } else {
+                            root.join(target)
+                        };
                         tx_to_fs.send(FsControl::CreateDir(chan_path.clone()));
                         tx_to_fs.send(
                             FsControl::Message(
@@ -119,9 +124,6 @@ impl FilesystemMT for IrcFs {
 
         fs.mk_rw_file("/in").unwrap();
         fs.mk_ro_file("/out").unwrap();
-
-
-        // self.handle_server(self.config.clone());
 
         Ok(())
     }
