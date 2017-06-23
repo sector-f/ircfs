@@ -1,4 +1,6 @@
 nickname = "ircfs"
+username = "ircfs"
+realname = "ircfs"
 server = "irc.rizon.net"
 channels = ["#ircfs", "#cosarara"]
 
