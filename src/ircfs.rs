@@ -104,7 +104,17 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender
                             )
                         );
                     },
-                    _ => {},
+                    _ => {
+                        tx_to_fs_2.send(
+                            FsControl::Message(
+                                root.join("out"),
+                                format!("{} {}",
+                                    time.strftime("%T").unwrap(),
+                                    msg,
+                                ).into_bytes(),
+                            )
+                        );
+                    },
                 }
             }
         }
@@ -117,12 +127,12 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender
     thread::spawn(move || {
         for message in rx.iter() {
             match message.command.clone() {
-                Command::PRIVMSG(channel, string) => {
+                Command::PRIVMSG(dest, string) => {
                     let time = time::now();
-                    let channel_path = Path::new("/").join(channel);
+                    let dest_path = Path::new("/").join(dest);
                     tx_to_fs_3.send(
                         FsControl::Message(
-                            channel_path.clone().join("out"),
+                            dest_path.clone().join("out"),
                             format!("{} {}: {}\n",
                                 time.strftime("%T").unwrap(),
                                 server.current_nickname(),
