@@ -49,7 +49,9 @@ Additionally, `ircfs` may eventually be modified so that one `ircfs` instance ha
 ### Pros
 
 * `ii` uses a regular file for output. This means that a disk write occurs for every single message from the IRC server. That is in no way optimal. `ircfs` instead stores all messages in memory.
-* `ii` uses a FIFO file for input. This means that m
+* `ii` uses a FIFO file for input. This means that messages sent to the `in` file are
+essentially lost; no record of them is kept (aside from your shell's history, perhaps).
+`ircfs` saves the data written to the `in` files so that you may read from them if desired.
 
 ### Cons
 
