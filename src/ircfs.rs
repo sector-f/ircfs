@@ -104,6 +104,46 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender
                             )
                         );
                     },
+                    Command::JOIN(channel, _, _) => {
+                        let username =
+                            msg.prefix.map(|s| String::from(s.split('!').nth(0).unwrap()))
+                            .unwrap_or(server.current_nickname().to_owned());
+                        let chan_path = root.join(&channel);
+                        tx_to_fs_2.send(FsControl::CreateDir(chan_path.clone()));
+                        tx_to_fs_2.send(
+                            FsControl::Message(
+                                chan_path.clone().join("out"),
+                                format!("{} {} has joined\n",
+                                    time.strftime("%T").unwrap(),
+                                    &username,
+                                ).into_bytes(),
+                            )
+                        );
+                    },
+                    Command::PART(channel, reason) => {
+                        let username =
+                            msg.prefix.map(|s| String::from(s.split('!').nth(0).unwrap()))
+                            .unwrap_or(server.current_nickname().to_owned());
+                        let chan_path = root.join(&channel);
+
+                        let reason = if let Some(r) = reason {
+                            format!(" ({})", r)
+                        } else {
+                            "".to_string()
+                        };
+
+                        tx_to_fs_2.send(FsControl::CreateDir(chan_path.clone()));
+                        tx_to_fs_2.send(
+                            FsControl::Message(
+                                chan_path.clone().join("out"),
+                                format!("{} {} has left{}\n",
+                                    time.strftime("%T").unwrap(),
+                                    &username,
+                                    &reason,
+                                ).into_bytes(),
+                            )
+                        );
+                    },
                     Command::PING(_, _) => {},
                     _ => {
                         tx_to_fs_2.send(
