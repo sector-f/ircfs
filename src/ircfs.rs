@@ -104,6 +104,7 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender
                             )
                         );
                     },
+                    Command::PING(_, _) => {},
                     _ => {
                         tx_to_fs_2.send(
                             FsControl::Message(
