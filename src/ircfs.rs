@@ -297,6 +297,17 @@ impl FilesystemMT for IrcFs {
                                             }
                                         }
                                     },
+                                    "/part" | "part" => {
+                                        if arguments.len() == 1 {
+                                            for chan in arguments[0].split(',') {
+                                                tx.send(Message::from(Command::PART(String::from(chan), None)));
+                                            }
+                                        } else if arguments.len() > 1 {
+                                            for (chan, reason) in arguments[0].split(',').zip(arguments[1].split(',')) {
+                                                tx.send(Message::from(Command::PART(String::from(chan), Some(String::from(reason)))));
+                                            }
+                                        }
+                                    },
                                     "/msg" | "msg" => {
                                         if arguments.len() == 1 {
                                             let tx_to_fs = self.tx_to_fs.lock().unwrap();

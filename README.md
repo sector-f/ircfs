@@ -33,6 +33,7 @@ Commands are performed by writing to the server's `in` file. The following comma
 * `/join CHANNELS [KEYS]`: Joins the comma-separated list of channels, using the (optional) comma-separated list of keys.
 * `/msg TARGET [MESSAGE]`: Sends a message to the target, whether it's a channel or user.
   If no message is specified, this creates a directory for the target without sending a message.
+* `/part TARGETS`: Parts the comma-separated list of channels.
 
 ## Functionality
 
@@ -48,7 +49,7 @@ The following has been implemented:
 ### Planned Functionality
 
 * Support for connecting via SSL
-* Standard IRC commands: `/me`, `/kick`, `/part`, `quit`, etc.
+* Standard IRC commands: `/me`, `/kick`, `/part`, `/quit`, etc.
 
 Additionally, `ircfs` may eventually be modified so that one `ircfs` instance handles connections to multiple IRC servers.
 
