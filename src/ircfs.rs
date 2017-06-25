@@ -226,23 +226,53 @@ impl FilesystemMT for IrcFs {
 
                     if let Ok(string) = String::from_utf8(data) {
                         let tx = self.tx_to_server.lock().unwrap();
-                        if string.len() > 3 {
-                            if &string[0..3] == "/j " {
-                                let channel = string[3..].trim().to_owned();
 
-                                let channel_path = Path::new("/").join(channel.clone());
-                                let tx_to_fs = self.tx_to_fs.lock().unwrap();
-                                tx_to_fs.send(FsControl::CreateDir(channel_path.clone()));
-
-                                tx.send(Message::from(Command::JOIN(channel, None, None)));
-                                return Ok(len as u32);
-                            }
-                        }
                         if path != Path::new("/in") {
                             let channel_dir = PathBuf::from(&path).parent().unwrap().to_owned();
                             let channel = channel_dir.file_name().unwrap();
                             let time = time::now();
                             tx.send(Message::from(Command::PRIVMSG(channel.to_string_lossy().into_owned(), string)));
+                        } else {
+                            let sections = string.split(' ').collect::<Vec<_>>();
+                            if let Some(command) = sections.iter().skip_while(|s| s.is_empty()).nth(0) {
+                                let arguments = sections.iter().skip_while(|s| s.is_empty()).skip(1).skip_while(|s| s.is_empty()).map(|s| s.to_owned().trim()).collect::<Vec<_>>();
+                                match *command {
+                                    "/j" | "/join" | "j" | "join" => {
+                                        if arguments.len() == 1 {
+                                            let tx_to_fs = self.tx_to_fs.lock().unwrap();
+                                            for chan in arguments[0].split(',') {
+                                                let channel_path = Path::new("/").join(chan.clone());
+                                                tx_to_fs.send(FsControl::CreateDir(channel_path.clone()));
+
+                                                tx.send(Message::from(Command::JOIN(String::from(chan), None, None)));
+                                            }
+                                        } else if arguments.len() > 1 {
+                                            let tx_to_fs = self.tx_to_fs.lock().unwrap();
+                                            for (chan, key) in arguments[0].split(',').zip(arguments[1].split(',')) {
+                                                let channel_path = Path::new("/").join(chan.clone());
+                                                tx_to_fs.send(FsControl::CreateDir(channel_path.clone()));
+
+                                                tx.send(Message::from(Command::JOIN(String::from(chan), Some(String::from(key)), None)));
+                                            }
+                                        }
+                                    },
+                                    "/msg" | "msg" => {
+                                        if arguments.len() == 1 {
+                                            let tx_to_fs = self.tx_to_fs.lock().unwrap();
+                                            let channel_path = Path::new("/").join(arguments[0].clone());
+                                            tx_to_fs.send(FsControl::CreateDir(channel_path.clone()));
+                                        } else if arguments.len() > 1 {
+                                            let tx_to_fs = self.tx_to_fs.lock().unwrap();
+                                            let channel_path = Path::new("/").join(arguments[0].clone());
+                                            tx_to_fs.send(FsControl::CreateDir(channel_path.clone()));
+
+                                            let message = arguments.iter().skip(1).map(|s| s.to_owned()).collect::<Vec<&str>>().join(" ");
+                                            tx.send(Message::from(Command::PRIVMSG(arguments[0].to_owned(), message)));
+                                        }
+                                    },
+                                    _ => {},
+                                }
+                            }
                         }
                     }
 
