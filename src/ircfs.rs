@@ -82,6 +82,17 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender
         for msg_res in server.iter() {
             if let Ok(msg) = msg_res {
                 let time = time::now();
+
+                tx_to_fs_2.send(
+                    FsControl::Message(
+                        root.join("raw"),
+                        format!("{} {}",
+                            time.strftime("%T").unwrap(),
+                            msg,
+                        ).into_bytes(),
+                    )
+                );
+
                 match msg.command {
                     Command::PRIVMSG(target, message) => {
                         let username =
@@ -198,6 +209,7 @@ impl FilesystemMT for IrcFs {
 
         fs.mk_rw_file("/in").unwrap();
         fs.mk_ro_file("/out").unwrap();
+        fs.mk_ro_file("/raw").unwrap();
 
         Ok(())
     }

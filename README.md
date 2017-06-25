@@ -14,7 +14,8 @@ freenode
 │   ├── in
 │   └── out
 ├── in
-└── out
+├── out
+└── raw
 ```
 
 ## Usage
@@ -34,6 +35,8 @@ Commands are performed by writing to the server's `in` file. The following comma
 * `/msg TARGET [MESSAGE]`: Sends a message to the target, whether it's a channel or user.
   If no message is specified, this creates a directory for the target without sending a message.
 * `/part TARGETS`: Parts the comma-separated list of channels.
+
+The `/raw` file contains the raw messages sent from the IRC server (along with a timestamp).
 
 ## Functionality
 
