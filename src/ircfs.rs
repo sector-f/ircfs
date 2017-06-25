@@ -3,12 +3,10 @@ use time::{self, Timespec};
 use irc::client::prelude::*;
 
 use std::sync::{Arc, RwLock, Mutex};
-use std::sync::mpsc::{channel, Sender, Receiver};
+use std::sync::mpsc::{channel, Sender};
 use std::path::{Path, PathBuf};
-use std::ffi::{OsString, OsStr};
-use std::collections::HashMap;
-use std::thread::{self, sleep, JoinHandle};
-use std::time::Duration;
+use std::ffi::OsString;
+use std::thread;
 use std::io;
 
 use fuse_mt::*;
@@ -16,11 +14,12 @@ use filesystem::*;
 
 pub struct IrcFs {
     fs: Arc<RwLock<Filesystem>>,
-    config: Config,
+    // config: Config,
     tx_to_fs: Mutex<Sender<FsControl>>,
     tx_to_server: Mutex<Sender<Message>>,
 }
 
+#[allow(unused_must_use)]
 impl IrcFs {
     pub fn new(config: &Config, uid: u32, gid: u32) -> io::Result<Self> {
         let (tx_to_fs, rx_from_server) = channel();
@@ -28,13 +27,13 @@ impl IrcFs {
 
         let filesystem = IrcFs {
             fs: Arc::new(RwLock::new(Filesystem::new(uid, gid))),
-            config: config.clone(),
+            // config: config.clone(),
             tx_to_fs: Mutex::new(tx_to_fs),
             tx_to_server: Mutex::new(tx_to_server),
         };
 
         if let Some(ref channels) = config.channels {
-            let mut fs = filesystem.fs.clone();
+            let fs = filesystem.fs.clone();
             let mut fs = fs.write().unwrap();
             for channel in channels {
                 let path = Path::new("/").join(channel);
@@ -67,6 +66,7 @@ impl IrcFs {
     }
 }
 
+#[allow(unused_must_use)]
 fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender<Message>> {
     let (tx, rx) = channel::<Message>();
 
@@ -151,6 +151,7 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender
     Ok(tx)
 }
 
+#[allow(unused_must_use)]
 impl FilesystemMT for IrcFs {
     fn init(&self, _req: RequestInfo) -> ResultEmpty {
         let mut fs = self.fs.write().unwrap();
@@ -231,7 +232,6 @@ impl FilesystemMT for IrcFs {
                         if path != Path::new("/in") {
                             let channel_dir = PathBuf::from(&path).parent().unwrap().to_owned();
                             let channel = channel_dir.file_name().unwrap();
-                            let time = time::now();
                             tx.send(Message::from(Command::PRIVMSG(channel.to_string_lossy().into_owned(), string)));
                         } else {
                             let sections = string.split(' ').collect::<Vec<_>>();
