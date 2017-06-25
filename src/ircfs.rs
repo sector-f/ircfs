@@ -316,7 +316,8 @@ impl FilesystemMT for IrcFs {
                                             }
                                         } else if arguments.len() > 1 {
                                             for (chan, reason) in arguments[0].split(',').zip(arguments[1].split(',')) {
-                                                tx.send(Message::from(Command::PART(String::from(chan), Some(String::from(reason)))));
+                                                let r = if reason.is_empty() { None } else { Some(reason.to_owned()) };
+                                                tx.send(Message::from(Command::PART(String::from(chan), r)));
                                             }
                                         }
                                     },
