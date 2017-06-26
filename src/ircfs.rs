@@ -22,6 +22,10 @@ pub struct IrcFs {
 #[allow(unused_must_use)]
 impl IrcFs {
     pub fn new(config: &Config, uid: u32, gid: u32) -> io::Result<Self> {
+        let mut config = config.clone();
+        config.version = Some("ircfs".to_owned());
+        config.source = Some("https://github.com/sector-f/ircfs".to_owned());
+
         let (tx_to_fs, rx_from_server) = channel();
         let tx_to_server = init_server(config.clone(), tx_to_fs.clone())?;
 
