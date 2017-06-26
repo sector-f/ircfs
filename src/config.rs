@@ -15,6 +15,7 @@ pub struct ServerConfig {
     pub port: Option<u16>,
     pub password: Option<String>,
     pub use_ssl: Option<bool>,
+    pub cert_path: Option<String>,
     pub encoding: Option<String>,
     pub channels: Option<Vec<String>>,
     pub channel_keys: Option<HashMap<String, String>>,
@@ -43,6 +44,7 @@ pub fn convert_config(config: ServerConfig) -> Config {
         port: config.port,
         password: config.password,
         use_ssl: config.use_ssl,
+        cert_path: config.cert_path,
         encoding: config.encoding,
         channels: config.channels,
         channel_keys: config.channel_keys,
@@ -55,5 +57,7 @@ pub fn convert_config(config: ServerConfig) -> Config {
         should_ghost: config.should_ghost,
         ghost_sequence: config.ghost_sequence,
         options: config.options,
+        use_mock_connection: None,
+        mock_initial_value: None,
     }
 }

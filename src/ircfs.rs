@@ -1,13 +1,14 @@
 use libc::{ENOENT, EISDIR, ENOTSUP};
 use time::{self, Timespec};
+
 use irc::client::prelude::*;
+use irc::error::Result as IrcResult;
 
 use std::sync::{Arc, RwLock, Mutex};
 use std::sync::mpsc::{channel, Sender};
 use std::path::{Path, PathBuf};
 use std::ffi::OsString;
 use std::thread;
-use std::io;
 
 use fuse_mt::*;
 use filesystem::*;
@@ -21,7 +22,7 @@ pub struct IrcFs {
 
 #[allow(unused_must_use)]
 impl IrcFs {
-    pub fn new(config: &Config, uid: u32, gid: u32) -> io::Result<Self> {
+    pub fn new(config: &Config, uid: u32, gid: u32) -> IrcResult<Self> {
         let mut config = config.clone();
         config.version = Some("ircfs".to_owned());
         config.source = Some("https://github.com/sector-f/ircfs".to_owned());
@@ -71,7 +72,7 @@ impl IrcFs {
 }
 
 #[allow(unused_must_use)]
-fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender<Message>> {
+fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> IrcResult<Sender<Message>> {
     let (tx, rx) = channel::<Message>();
 
     let srv = IrcServer::from_config(config.clone())?;
@@ -83,97 +84,95 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> io::Result<Sender
     thread::spawn(move || {
         server.identify();
         let root = Path::new("/");
-        for msg_res in server.iter() {
-            if let Ok(msg) = msg_res {
-                let time = time::now();
+        server.for_each_incoming(|msg| {
+            let time = time::now();
 
-                tx_to_fs_2.send(
-                    FsControl::Message(
-                        root.join("raw"),
-                        format!("{} {}",
-                            time.strftime("%T").unwrap(),
-                            msg,
-                        ).into_bytes(),
-                    )
-                );
+            tx_to_fs_2.send(
+                FsControl::Message(
+                    root.join("raw"),
+                    format!("{} {}",
+                        time.strftime("%T").unwrap(),
+                        msg,
+                    ).into_bytes(),
+                )
+            );
 
-                match msg.command {
-                    Command::PRIVMSG(target, message) => {
-                        let username =
-                            msg.prefix.map(|s| String::from(s.split('!').nth(0).unwrap()))
-                            .unwrap_or(server.current_nickname().to_owned());
-                        let chan_path = if &target == server.current_nickname() {
-                            root.join(&username)
-                        } else {
-                            root.join(target)
-                        };
-                        tx_to_fs_2.send(FsControl::CreateDir(chan_path.clone()));
-                        tx_to_fs_2.send(
-                            FsControl::Message(
-                                chan_path.clone().join("out"),
-                                format!("{} {}: {}\n",
-                                    time.strftime("%T").unwrap(),
-                                    &username,
-                                    message.trim(),
-                                ).into_bytes(),
-                            )
-                        );
-                    },
-                    Command::JOIN(channel, _, _) => {
-                        let username =
-                            msg.prefix.map(|s| String::from(s.split('!').nth(0).unwrap()))
-                            .unwrap_or(server.current_nickname().to_owned());
-                        let chan_path = root.join(&channel);
-                        tx_to_fs_2.send(FsControl::CreateDir(chan_path.clone()));
-                        tx_to_fs_2.send(
-                            FsControl::Message(
-                                chan_path.clone().join("out"),
-                                format!("{} {} has joined\n",
-                                    time.strftime("%T").unwrap(),
-                                    &username,
-                                ).into_bytes(),
-                            )
-                        );
-                    },
-                    Command::PART(channel, reason) => {
-                        let username =
-                            msg.prefix.map(|s| String::from(s.split('!').nth(0).unwrap()))
-                            .unwrap_or(server.current_nickname().to_owned());
-                        let chan_path = root.join(&channel);
+            match msg.command {
+                Command::PRIVMSG(target, message) => {
+                    let username =
+                        msg.prefix.map(|s| String::from(s.split('!').nth(0).unwrap()))
+                        .unwrap_or(server.current_nickname().to_owned());
+                    let chan_path = if &target == server.current_nickname() {
+                        root.join(&username)
+                    } else {
+                        root.join(target)
+                    };
+                    tx_to_fs_2.send(FsControl::CreateDir(chan_path.clone()));
+                    tx_to_fs_2.send(
+                        FsControl::Message(
+                            chan_path.clone().join("out"),
+                            format!("{} {}: {}\n",
+                                time.strftime("%T").unwrap(),
+                                &username,
+                                message.trim(),
+                            ).into_bytes(),
+                        )
+                    );
+                },
+                Command::JOIN(channel, _, _) => {
+                    let username =
+                        msg.prefix.map(|s| String::from(s.split('!').nth(0).unwrap()))
+                        .unwrap_or(server.current_nickname().to_owned());
+                    let chan_path = root.join(&channel);
+                    tx_to_fs_2.send(FsControl::CreateDir(chan_path.clone()));
+                    tx_to_fs_2.send(
+                        FsControl::Message(
+                            chan_path.clone().join("out"),
+                            format!("{} {} has joined\n",
+                                time.strftime("%T").unwrap(),
+                                &username,
+                            ).into_bytes(),
+                        )
+                    );
+                },
+                Command::PART(channel, reason) => {
+                    let username =
+                        msg.prefix.map(|s| String::from(s.split('!').nth(0).unwrap()))
+                        .unwrap_or(server.current_nickname().to_owned());
+                    let chan_path = root.join(&channel);
 
-                        let reason = if let Some(r) = reason {
-                            format!(" ({})", r)
-                        } else {
-                            "".to_string()
-                        };
+                    let reason = if let Some(r) = reason {
+                        format!(" ({})", r)
+                    } else {
+                        "".to_string()
+                    };
 
-                        tx_to_fs_2.send(FsControl::CreateDir(chan_path.clone()));
-                        tx_to_fs_2.send(
-                            FsControl::Message(
-                                chan_path.clone().join("out"),
-                                format!("{} {} has left{}\n",
-                                    time.strftime("%T").unwrap(),
-                                    &username,
-                                    &reason,
-                                ).into_bytes(),
-                            )
-                        );
-                    },
-                    Command::PING(_, _) => {},
-                    _ => {
-                        tx_to_fs_2.send(
-                            FsControl::Message(
-                                root.join("out"),
-                                format!("{} {}",
-                                    time.strftime("%T").unwrap(),
-                                    msg,
-                                ).into_bytes(),
-                            )
-                        );
-                    },
-                }
+                    tx_to_fs_2.send(FsControl::CreateDir(chan_path.clone()));
+                    tx_to_fs_2.send(
+                        FsControl::Message(
+                            chan_path.clone().join("out"),
+                            format!("{} {} has left{}\n",
+                                time.strftime("%T").unwrap(),
+                                &username,
+                                &reason,
+                            ).into_bytes(),
+                        )
+                    );
+                },
+                Command::PING(_, _) => {},
+                _ => {
+                    tx_to_fs_2.send(
+                        FsControl::Message(
+                            root.join("out"),
+                            format!("{} {}",
+                                time.strftime("%T").unwrap(),
+                                msg,
+                            ).into_bytes(),
+                        )
+                    );
+                },
             }
-        }
+        });
     });
 
     // This thread receives messages from the filesystem and performs
