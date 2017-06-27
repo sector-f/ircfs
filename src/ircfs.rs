@@ -281,8 +281,11 @@ impl FilesystemMT for IrcFs {
                 if can_write(uid, gid, mode, &req) {
                     file.insert_data(&data);
 
-                    if let Ok(string) = String::from_utf8(data) {
+                    if let Ok(mut string) = String::from_utf8(data) {
                         let tx = self.tx_to_server.lock().unwrap();
+
+                        let trimmed_len = string.trim_right().len();
+                        string.truncate(trimmed_len);
 
                         if path == Path::new("/send") {
                             let sections = string.split(' ').collect::<Vec<_>>();
