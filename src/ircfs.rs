@@ -43,8 +43,8 @@ impl IrcFs {
             for channel in channels {
                 let path = Path::new("/").join(channel);
                 fs.mk_parents(&path);
-                fs.mk_ro_file(&path.join("out"));
-                fs.mk_rw_file(&path.join("in"));
+                fs.mk_ro_file(&path.join("receive"));
+                fs.mk_rw_file(&path.join("send"));
             }
         }
 
@@ -60,8 +60,8 @@ impl IrcFs {
                     },
                     FsControl::CreateDir(ref path) => {
                         fs.mk_parents(&path);
-                        fs.mk_ro_file(&path.join("out"));
-                        fs.mk_rw_file(&path.join("in"));
+                        fs.mk_ro_file(&path.join("receive"));
+                        fs.mk_rw_file(&path.join("send"));
                     }
                 }
             }
@@ -110,7 +110,7 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> IrcResult<Sender<
                     tx_to_fs_2.send(FsControl::CreateDir(chan_path.clone()));
                     tx_to_fs_2.send(
                         FsControl::Message(
-                            chan_path.clone().join("out"),
+                            chan_path.clone().join("receive"),
                             format!("{} {}: {}\n",
                                 time.strftime("%T").unwrap(),
                                 &username,
@@ -127,7 +127,7 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> IrcResult<Sender<
                     tx_to_fs_2.send(FsControl::CreateDir(chan_path.clone()));
                     tx_to_fs_2.send(
                         FsControl::Message(
-                            chan_path.clone().join("out"),
+                            chan_path.clone().join("receive"),
                             format!("{} {} has joined\n",
                                 time.strftime("%T").unwrap(),
                                 &username,
@@ -150,7 +150,7 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> IrcResult<Sender<
                     tx_to_fs_2.send(FsControl::CreateDir(chan_path.clone()));
                     tx_to_fs_2.send(
                         FsControl::Message(
-                            chan_path.clone().join("out"),
+                            chan_path.clone().join("receive"),
                             format!("{} {} has left{}\n",
                                 time.strftime("%T").unwrap(),
                                 &username,
@@ -163,7 +163,7 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> IrcResult<Sender<
                 _ => {
                     tx_to_fs_2.send(
                         FsControl::Message(
-                            root.join("out"),
+                            root.join("receive"),
                             format!("{} {}",
                                 time.strftime("%T").unwrap(),
                                 msg,
@@ -187,7 +187,7 @@ fn init_server(config: Config, tx_to_fs: Sender<FsControl>) -> IrcResult<Sender<
                     let dest_path = Path::new("/").join(dest);
                     tx_to_fs_3.send(
                         FsControl::Message(
-                            dest_path.clone().join("out"),
+                            dest_path.clone().join("receive"),
                             format!("{} {}: {}\n",
                                 time.strftime("%T").unwrap(),
                                 server.current_nickname(),
@@ -210,8 +210,8 @@ impl FilesystemMT for IrcFs {
     fn init(&self, _req: RequestInfo) -> ResultEmpty {
         let mut fs = self.fs.write().unwrap();
 
-        fs.mk_rw_file("/in").unwrap();
-        fs.mk_ro_file("/out").unwrap();
+        fs.mk_rw_file("/send").unwrap();
+        fs.mk_ro_file("/receive").unwrap();
         fs.mk_ro_file("/raw").unwrap();
 
         Ok(())
@@ -284,11 +284,7 @@ impl FilesystemMT for IrcFs {
                     if let Ok(string) = String::from_utf8(data) {
                         let tx = self.tx_to_server.lock().unwrap();
 
-                        if path != Path::new("/in") {
-                            let channel_dir = PathBuf::from(&path).parent().unwrap().to_owned();
-                            let channel = channel_dir.file_name().unwrap();
-                            tx.send(Message::from(Command::PRIVMSG(channel.to_string_lossy().into_owned(), string)));
-                        } else {
+                        if path == Path::new("/send") {
                             let sections = string.split(' ').collect::<Vec<_>>();
                             if let Some(command) = sections.iter().skip_while(|s| s.is_empty()).nth(0) {
                                 let arguments = sections.iter().skip_while(|s| s.is_empty()).skip(1).skip_while(|s| s.is_empty()).map(|s| s.to_owned().trim()).collect::<Vec<_>>();
@@ -341,13 +337,17 @@ impl FilesystemMT for IrcFs {
                                     _ => {},
                                 }
                             }
+                        } else {
+                            let channel_dir = PathBuf::from(&path).parent().unwrap().to_owned();
+                            let channel = channel_dir.file_name().unwrap();
+                            tx.send(Message::from(Command::PRIVMSG(channel.to_string_lossy().into_owned(), string)));
                         }
                     }
 
                     Ok(len as u32)
                 } else {
                     // Should probably be changed to EACCES if/when permissions are implemented
-                    // But, currently, this will just be the "out" files, and ENOTSUP seems
+                    // But, currently, this will just be the "receive" files, and ENOTSUP seems
                     // more logical
                     Err(ENOTSUP)
                 }
