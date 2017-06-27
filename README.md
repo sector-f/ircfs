@@ -8,13 +8,13 @@ IRC filesystem based on [Suckless' ii](http://tools.suckless.org/ii/)
 ```
 freenode
 ├── #bash
-│   ├── in
-│   └── out
+│   ├── send
+│   └── receive
 ├── ##linux
-│   ├── in
-│   └── out
-├── in
-├── out
+│   ├── send
+│   └── receive
+├── send
+├── receive
 └── raw
 ```
 
@@ -25,11 +25,11 @@ freenode
 Alternatively, a TOML configuration file can be provided and specified with the `-c` flag. An example `ircfs.toml` file is provided.
 If flags are used in addition to a configuration file, then the flags take precedence.
 
-Messages are sent by writing data to the `in` file for a channel or user: `echo "How do I install Gentoo?" > '##linux/in'`
+Messages are sent by writing data to the `send` file for a channel or user: `echo "How do I install Gentoo?" > '##linux/send'`
 
-Messages can be read via the corresponding `out` file.
+Messages can be read via the corresponding `receive` file.
 
-Commands are performed by writing to the server's `in` file. The following commands have been implemented:
+Commands are performed by writing to the server's `send` file. The following commands have been implemented:
 
 * `/join CHANNELS [KEYS]`: Joins the comma-separated list of channels, using the (optional) comma-separated list of keys.
 * `/msg TARGET [MESSAGE]`: Sends a message to the target, whether it's a channel or user.
