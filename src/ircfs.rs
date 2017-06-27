@@ -27,12 +27,17 @@ impl IrcFs {
         config.source = Some("https://github.com/sector-f/ircfs".to_owned());
 
         let srv = IrcServer::from_config(config.clone())?;
-        srv.identify()?;
 
         let (tx, rx) = channel();
 
+        let mut fs = Filesystem::new(uid, gid);
+
+        fs.mk_rw_file("/send").unwrap();
+        fs.mk_ro_file("/receive").unwrap();
+        fs.mk_ro_file("/raw").unwrap();
+
         let filesystem = IrcFs {
-            fs: Arc::new(RwLock::new(Filesystem::new(uid, gid))),
+            fs: Arc::new(RwLock::new(fs)),
             server: srv,
             tx_to_fs: Mutex::new(tx.clone()),
         };
@@ -60,6 +65,7 @@ impl IrcFs {
         let server = filesystem.server.clone();
         thread::spawn(move|| {
             let root = Path::new("/");
+            server.identify();
             server.for_each_incoming(|msg| {
                 let time = time::now();
 
@@ -166,12 +172,6 @@ impl IrcFs {
 #[allow(unused_must_use)]
 impl FilesystemMT for IrcFs {
     fn init(&self, _req: RequestInfo) -> ResultEmpty {
-        let mut fs = self.fs.write().unwrap();
-
-        fs.mk_rw_file("/send").unwrap();
-        fs.mk_ro_file("/receive").unwrap();
-        fs.mk_ro_file("/raw").unwrap();
-
         Ok(())
     }
 
