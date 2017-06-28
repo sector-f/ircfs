@@ -25,6 +25,7 @@ impl IrcFs {
         let mut config = config.clone();
         config.version = Some("ircfs".to_owned());
         config.source = Some("https://github.com/sector-f/ircfs".to_owned());
+        config.ping_time = Some(3600);
 
         let srv = IrcServer::from_config(config.clone())?;
 

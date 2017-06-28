@@ -16,10 +16,7 @@ libc = "0.2.22"
 time = "0.1.37"
 # fuse_mt = "0.4.1"
 num_cpus = "1.5.1"
-
-[dependencies.irc]
-git = "https://github.com/aatxe/irc.git"
-rev = "7712a55"
+irc = "0.12.2"
 
 [dependencies.fuse_mt]
 git = "https://github.com/sector-f/fuse-mt.git"
