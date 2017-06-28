@@ -241,12 +241,12 @@ impl FilesystemMT for IrcFs {
                     if let Ok(mut string) = String::from_utf8(data) {
                         let trimmed_len = string.trim_right().len();
                         string.truncate(trimmed_len);
-
                         if string.is_empty() {
                             return Ok(len as u32);
                         }
-
+                        string.push('\n');
                         file.insert_data(string.as_bytes());
+                        let _ = string.pop();
 
                         if path == Path::new("/send") {
                             let sections = string.split(' ').collect::<Vec<_>>();
