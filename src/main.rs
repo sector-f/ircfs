@@ -1,8 +1,5 @@
 extern crate serde;
-extern crate toml;
-extern crate time;
-extern crate libc;
-extern crate num_cpus;
+#[macro_use] extern crate serde_derive;
 
 extern crate fuse_mt;
 use fuse_mt::FuseMT;
@@ -16,6 +13,11 @@ use irc::client::prelude::Config;
 // extern crate daemonize;
 // use daemonize::Daemonize;
 
+extern crate toml;
+extern crate time;
+extern crate libc;
+extern crate num_cpus;
+
 use std::env::{current_dir, var_os};
 use std::process::exit;
 use std::path::PathBuf;
@@ -23,9 +25,14 @@ use std::fs::File;
 use std::ffi::{OsStr, OsString};
 use std::io::{stderr, Read, Write};
 
-extern crate ircfs;
-use ircfs::ircfs::*;
-use ircfs::config::*;
+pub mod ircfs;
+use ircfs::*;
+
+pub mod config;
+use config::*;
+
+pub mod filesystem;
+pub mod permissions;
 
 fn is_valid_u16(n: &OsStr) -> Result<(), OsString> {
     let n = n.to_string_lossy();

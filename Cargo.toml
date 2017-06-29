@@ -3,9 +3,6 @@ name = "ircfs"
 version = "0.1.0"
 authors = ["Adam <sector-f@users.noreply.github.com>"]
 
-[lib]
-doc = false
-
 [dependencies]
 toml = "0.4.0"
 serde = "1.0.2"
