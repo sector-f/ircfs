@@ -28,6 +28,8 @@ pub struct ServerConfig {
     pub should_ghost: Option<bool>,
     pub ghost_sequence: Option<Vec<String>>,
     pub options: Option<HashMap<String, String>>,
+    pub burst_window_length: Option<u32>,
+    pub max_messages_in_burst: Option<u32>,
 }
 
 pub fn convert_config(config: ServerConfig) -> Config {
@@ -59,5 +61,7 @@ pub fn convert_config(config: ServerConfig) -> Config {
         options: config.options,
         use_mock_connection: None,
         mock_initial_value: None,
+        burst_window_length: config.burst_window_length,
+        max_messages_in_burst: config.max_messages_in_burst,
     }
 }

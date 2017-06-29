@@ -23,9 +23,8 @@ pub struct IrcFs {
 impl IrcFs {
     pub fn new(config: &Config, uid: u32, gid: u32) -> IrcResult<Self> {
         let mut config = config.clone();
-        config.version = Some("ircfs".to_owned());
+        config.version = Some(format!("ircfs {}", option_env!("CARGO_PKG_VERSION").unwrap_or("unknown version")));
         config.source = Some("https://github.com/sector-f/ircfs".to_owned());
-        config.ping_time = Some(3600);
 
         let srv = IrcServer::from_config(config.clone())?;
 
