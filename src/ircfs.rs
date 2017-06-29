@@ -259,7 +259,7 @@ impl FilesystemMT for IrcFs {
                                                 let channel_path = Path::new("/").join(chan.clone());
                                                 tx_to_fs.send(FsControl::CreateDir(channel_path.clone()));
 
-                                                self.server.send(Message::from(Command::JOIN(String::from(chan), None, None)));
+                                                self.server.send_join(&chan);
                                             }
                                         } else if arguments.len() > 1 {
                                             let tx_to_fs = self.tx_to_fs.lock().unwrap();
@@ -267,7 +267,7 @@ impl FilesystemMT for IrcFs {
                                                 let channel_path = Path::new("/").join(chan.clone());
                                                 tx_to_fs.send(FsControl::CreateDir(channel_path.clone()));
 
-                                                self.server.send(Message::from(Command::JOIN(String::from(chan), Some(String::from(key)), None)));
+                                                self.server.send_join_with_keys(&chan, &key);
                                             }
                                         }
                                     },
@@ -294,7 +294,7 @@ impl FilesystemMT for IrcFs {
                                             tx_to_fs.send(FsControl::CreateDir(channel_path.clone()));
 
                                             let message = arguments.iter().skip(1).map(|s| s.to_owned()).collect::<Vec<&str>>().join(" ");
-                                            self.server.send(Message::from(Command::PRIVMSG(arguments[0].to_owned(), message)));
+                                            self.server.send_privmsg(arguments[0], &message);
                                         }
                                     },
                                     _ => {},
