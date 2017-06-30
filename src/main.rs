@@ -197,7 +197,10 @@ fn main() {
     match IrcFs::new(&config, uid, gid){
         Ok(filesystem) => {
             let fuse_mt = FuseMT::new(filesystem, num_threads);
-            let _ = fuse_mt::mount(fuse_mt, &mountpoint, &[]);
+            if let Err(e) = fuse_mt::mount(fuse_mt, &mountpoint, &[]) {
+                let _ = writeln!(stderr(), "Failed to mout filesystem: {}", e);
+                exit(1);
+            }
         },
         Err(e) => {
             let _ = writeln!(stderr(), "Failed to connect to IRC server: {}", e);
