@@ -184,14 +184,20 @@ impl FilesystemMT for IrcFs {
             },
             Some(&Node::F(ref file)) => {
                 let data = file.data();
-                let end = {
-                    if (size as u64 + offset) as usize > data.len() {
-                        data.len()
-                    } else {
-                        size as usize
-                    }
-                };
-                Ok(data[offset as usize..end].to_owned())
+
+                if offset >= data.len() as u64 {
+                    Ok(Vec::new())
+                } else {
+                    let end = {
+                        if (size as u64 + offset) as usize > data.len() {
+                            data.len()
+                        } else {
+                            size as usize
+                        }
+                    };
+
+                    Ok(data[offset as usize..end].to_owned())
+                }
             },
             None => {
                 Err(ENOENT)
