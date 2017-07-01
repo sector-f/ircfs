@@ -231,6 +231,7 @@ impl FilesystemMT for IrcFs {
 
     fn write(&self, req: RequestInfo, path: &Path, _fh: u64, _offset: u64, data: Vec<u8>, _flags: u32) -> ResultWrite {
         let mut fs = self.fs.write().unwrap();
+        let time = time::now();
 
         match fs.get_mut(path) {
             Some(&mut Node::D(ref mut _dir)) => {
@@ -301,14 +302,22 @@ impl FilesystemMT for IrcFs {
 
                                             let message = arguments.iter().skip(1).map(|s| s.to_owned()).collect::<Vec<&str>>().join(" ");
                                             self.server.send_privmsg(arguments[0], &message);
+                                            tx_to_fs.send(
+                                                FsControl::Message(
+                                                    channel_path.join("receive"),
+                                                    format!("{} {}: {}\n",
+                                                        time.strftime("%T").unwrap(),
+                                                        self.server.current_nickname(),
+                                                        message,
+                                                    ).into_bytes(),
+                                                )
+                                            );
                                         }
                                     },
                                     _ => {},
                                 }
                             }
                         } else {
-                            let time = time::now();
-
                             let channel_dir = PathBuf::from(&path).parent().unwrap().to_owned();
                             let channel = channel_dir.file_name().unwrap();
 
