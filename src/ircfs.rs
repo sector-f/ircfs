@@ -79,11 +79,11 @@ impl IrcFs {
                     )
                 );
 
+                let msg_clone = msg.clone();
                 match msg.command {
                     Command::PRIVMSG(target, message) => {
-                        let username =
-                            msg.prefix.map(|s| String::from(s.split('!').nth(0).unwrap()))
-                            .unwrap_or(server.current_nickname().to_owned());
+                        let username = msg_clone.source_nickname()
+                            .unwrap_or(server.current_nickname()).to_owned();
                         let chan_path = if &target == server.current_nickname() {
                             root.join(&username)
                         } else {
@@ -102,9 +102,8 @@ impl IrcFs {
                         );
                     },
                     Command::JOIN(channel, _, _) => {
-                        let username =
-                            msg.prefix.map(|s| String::from(s.split('!').nth(0).unwrap()))
-                            .unwrap_or(server.current_nickname().to_owned());
+                        let username = msg_clone.source_nickname()
+                            .unwrap_or(server.current_nickname()).to_owned();
                         let chan_path = root.join(&channel);
                         tx_to_fs.send(FsControl::CreateDir(chan_path.clone()));
                         tx_to_fs.send(
@@ -118,9 +117,8 @@ impl IrcFs {
                         );
                     },
                     Command::PART(channel, reason) => {
-                        let username =
-                            msg.prefix.map(|s| String::from(s.split('!').nth(0).unwrap()))
-                            .unwrap_or(server.current_nickname().to_owned());
+                        let username = msg_clone.source_nickname()
+                            .unwrap_or(server.current_nickname()).to_owned();
                         let chan_path = root.join(&channel);
 
                         let reason = if let Some(r) = reason {
