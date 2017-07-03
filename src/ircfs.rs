@@ -194,7 +194,11 @@ impl FilesystemMT for IrcFs {
                         }
                     };
 
-                    Ok(data[offset as usize..end].to_owned())
+                    if offset >= end as u64 {
+                        Ok(Vec::new())
+                    } else {
+                        Ok(data[offset as usize..end].to_owned())
+                    }
                 }
             },
             None => {
